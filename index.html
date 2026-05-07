@@ -1721,7 +1721,7 @@
                 lastSearchTitle = albumInfo.title;
 
                 if (candidates && candidates.length > 0) {
-                    const topScore = scoreResult(candidates[0], `${albumInfo.artist || ''} ${albumInfo.title || ''}`.toLowerCase());
+                    const topScore = scoreResult(candidates[0], albumInfo.artist || '', albumInfo.title || '');
                     // 判断逻辑：匹配度足够高则自动选中
                     if (topScore >= 4) {
                         await selectCandidate(candidates[0].id, albumInfo.artist, albumInfo.title);
@@ -1890,10 +1890,9 @@
 
             // 按相似度排序
             if (artist || title) {
-                const target = `${artist || ''} ${title || ''}`.toLowerCase();
                 allResults.sort((a, b) => {
-                    const sa = scoreResult(a, target);
-                    const sb = scoreResult(b, target);
+                    const sa = scoreResult(a, artist || '', title || '');
+                    const sb = scoreResult(b, artist || '', title || '');
                     return sb - sa;
                 });
             }
@@ -1901,24 +1900,35 @@
             return allResults.slice(0, 8);
         }
 
-        function scoreResult(result, target) {
+        function scoreResult(result, targetArtist, targetTitle) {
             const rt = (result.title || '').toLowerCase();
             let score = 0;
-            const targetWords = target.split(/[\s\-,&]+/).filter(w => w.length > 1);
-            for (const w of targetWords) {
-                if (rt.includes(w)) score += 3;
-                // 模糊匹配：前4个字符
-                if (w.length >= 4) {
-                    const short = w.substring(0, 4);
-                    if (rt.includes(short)) score += 1;
+
+            // 专辑名匹配（高权重）
+            if (targetTitle) {
+                const titleWords = targetTitle.split(/[\s\-,&]+/).filter(w => w.length > 1);
+                for (const w of titleWords) {
+                    if (rt.includes(w)) score += 5;
+                    if (w.length >= 4) {
+                        const short = w.substring(0, 4);
+                        if (rt.includes(short)) score += 2;
+                    }
+                    if (w.length >= 2 && w.length < 4) {
+                        if (rt.includes(w)) score += 2;
+                    }
                 }
-                // 非常短的词（2-3字符）也要匹配但权重低
-                if (w.length >= 2 && w.length < 4) {
+                // 专辑名整体匹配，大幅加分
+                if (rt.includes(targetTitle.trim())) score += 20;
+            }
+
+            // 艺术家名匹配（低权重，仅作辅助）
+            if (targetArtist) {
+                const artistWords = targetArtist.split(/[\s\-,&]+/).filter(w => w.length > 1);
+                for (const w of artistWords) {
                     if (rt.includes(w)) score += 1;
                 }
             }
-            // 如果目标整体是结果的子串，大幅加分
-            if (rt.includes(target.trim())) score += 10;
+
             return score;
         }
 
