@@ -1721,14 +1721,8 @@
                 lastSearchTitle = albumInfo.title;
 
                 if (candidates && candidates.length > 0) {
-                    const topScore = scoreResult(candidates[0], `${albumInfo.artist || ''} ${albumInfo.title || ''}`.toLowerCase());
-                    // 只有非常精确的匹配才自动选中（阈值10），其他都显示候选列表
-                    if (topScore >= 10) {
-                        await selectCandidate(candidates[0].id, albumInfo.artist, albumInfo.title);
-                    } else {
-                        // 显示候选列表让用户选择
-                        showCandidates(candidates, albumInfo.artist, albumInfo.title);
-                    }
+                    // 始终显示候选列表让用户选择
+                    showCandidates(candidates, albumInfo.artist, albumInfo.title);
                 } else {
                     // 没有候选，使用 AI 结果作为降级
                     displayFallbackResult(albumInfo);
