@@ -2864,10 +2864,13 @@
                     isTranslated: false
                 };
 
+                // 添加数据来源提示
+                const sourceLabel = wikiData ? `（来源：${wikiLang === 'zh' ? '中文' : wikiLang === 'ja' ? '日文' : '英文'}维基百科${wikiFullContent ? '完整内容' : '摘要'}）` : '（暂无维基百科数据）';
+                
                 // 如果是英文或日文，需要翻译
                 if (wikiLang !== 'zh' && shortDesc.length > 50) {
                     // 先显示原文，同时后台翻译简介
-                    descEl.textContent = shortDesc;
+                    descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
                     detailsEl.innerHTML = longDesc;
                     descEl.innerHTML = '<span style="color: var(--text-muted);">正在翻译简介...</span>' + 
                         '<div style="margin-top:8px;font-size:13px;color:var(--text-muted);opacity:0.7">' + shortDesc.substring(0, 100) + '...</div>';
@@ -2877,10 +2880,10 @@
                     if (translated !== shortDesc) {
                         window.currentAlbumDesc.shortTranslated = translated;
                         window.currentAlbumDesc.isTranslated = true;
-                        descEl.textContent = translated;
+                        descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + translated;
                     } else {
                         // 翻译失败，直接显示原文
-                        descEl.textContent = shortDesc;
+                        descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
                         window.currentAlbumDesc.isTranslated = false;
                     }
 
@@ -2889,7 +2892,7 @@
                     window.currentAlbumDesc.longNeedsTranslation = (wikiLang !== 'zh');
                 } else {
                     // 中文内容直接显示
-                    descEl.textContent = shortDesc;
+                    descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
                     detailsEl.innerHTML = longDesc;
                 }
 
