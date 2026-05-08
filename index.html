@@ -3210,8 +3210,12 @@
                         const children = Array.from(outputDiv.children);
                         console.log('子元素数:', children.length);
                         
+                        // 调试：显示前10个子元素的 tagName
+                        console.log('前10个子元素:', children.slice(0, 10).map(c => c.tagName));
+                        
                         let currentTitle = '';
                         let currentContent = '';
+                        let sectionCount = 0;
                         
                         children.forEach(child => {
                             const tagName = child.tagName;
@@ -3223,6 +3227,7 @@
                                     if (!['Contents', '目录', 'External links', 'See also', 'References', 'Notes'].some(t => currentTitle.includes(t))) {
                                         longDesc += `<h4>${currentTitle}</h4>`;
                                         longDesc += `<p>${currentContent.trim().substring(0, 500)}${currentContent.length > 500 ? '...' : ''}</p>`;
+                                        sectionCount++;
                                     }
                                 }
                                 
@@ -3237,6 +3242,8 @@
                                 }
                             }
                         });
+                        
+                        console.log('提取到章节数:', sectionCount);
                         
                         // 保存最后一个章节
                         if (currentTitle && currentContent.length > 50) {
