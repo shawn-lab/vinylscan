@@ -1430,6 +1430,9 @@
             <a class="discogs-link" id="discogsLink" href="#" target="_blank" rel="noopener">
                 🌐 在 Discogs 上查看
             </a>
+            <a class="discogs-link" id="neteaseLink" href="#" target="_blank" rel="noopener" style="display:none">
+                🎵 在网易云音乐搜索
+            </a>
             <button class="discogs-link" id="otherMatchesBtn" style="display:none;cursor:pointer;border:none;font-family:inherit;" onclick="showOtherMatches()">
                 🔄 不是这个？查看其他匹配
             </button>
@@ -2248,17 +2251,12 @@
             tracks.forEach((track, i) => {
                 const li = document.createElement('li');
                 li.className = 'track-item';
-                const searchQuery = encodeURIComponent(`${data.artist} ${track.title}`);
-                const neteaseUrl = `orpheus://search/${searchQuery}`;
                 li.innerHTML = `
                     <span class="track-number">${track.position || (i + 1)}</span>
                     <div class="track-info">
                         <div class="track-name" onclick="copyText('${escapeJs(track.title)}')" title="点击复制歌名">${escapeHtml(track.title)}</div>
                         ${track.duration ? `<div class="track-duration">${track.duration}</div>` : ''}
                         ${track.artist && track.artist !== data.artist ? `<div class="track-artist">${escapeHtml(track.artist)}</div>` : ''}
-                    </div>
-                    <div class="track-actions">
-                        <a class="track-link-btn" href="${neteaseUrl}" target="_blank" rel="noopener" title="在网易云音乐搜索">🎵</a>
                     </div>
                 `;
                 tracklistEl.appendChild(li);
@@ -2272,6 +2270,12 @@
             } else {
                 linkEl.style.display = 'none';
             }
+
+            // 网易云音乐链接：搜索艺术家+专辑名
+            const neteaseLink = document.getElementById('neteaseLink');
+            const neteaseQuery = encodeURIComponent(`${data.artist} ${data.title}`);
+            neteaseLink.href = `https://music.163.com/#/search/m/?s=${neteaseQuery}`;
+            neteaseLink.style.display = 'flex';
 
             // "查看其他匹配"按钮：有候选且候选数>1时显示
             const otherBtn = document.getElementById('otherMatchesBtn');
