@@ -1645,11 +1645,11 @@
                 <div class="ai-result-label">AI 识别结果：</div>
                 <div class="ai-result-text" id="aiResultText"></div>
             </div>
-            <div class="search-box">
+            <div class="search-box" id="candidateSearchBox">
                 <input type="text" class="form-input" id="discogsSearchInput" placeholder="输入关键词重新搜索..." onkeydown="if(event.key==='Enter')retryDiscogsSearch()">
                 <button class="search-box-btn" onclick="retryDiscogsSearch()">搜索</button>
             </div>
-            <div class="discogs-paste-box">
+            <div class="discogs-paste-box" id="candidatePasteBox">
                 <input type="text" class="form-input" id="discogsUrlInput" placeholder="或粘贴 Discogs 专辑链接，如 https://www.discogs.com/release/4027223-..." onkeydown="if(event.key==='Enter')loadFromDiscogsUrl()">
                 <button class="search-box-btn" onclick="loadFromDiscogsUrl()">导入</button>
             </div>
@@ -2269,11 +2269,20 @@
             section.style.display = 'block';
             list.innerHTML = '';
 
-            // 显示 AI 识别结果
-            document.getElementById('aiResultText').textContent = `${aiArtist} - ${aiTitle}`;
-
-            // 设置搜索框默认值
-            document.getElementById('discogsSearchInput').value = `${aiArtist} ${aiTitle}`;
+            // 如果不是搜索模式，显示搜索框和导入框
+            if (!window.isSearchMode) {
+                document.getElementById('candidateSearchBox').style.display = '';
+                document.getElementById('candidatePasteBox').style.display = '';
+                // 显示 AI 识别结果
+                document.getElementById('aiResultBox').style.display = '';
+                document.getElementById('aiResultText').textContent = `${aiArtist} - ${aiTitle}`;
+                // 设置搜索框默认值
+                document.getElementById('discogsSearchInput').value = `${aiArtist} ${aiTitle}`;
+            } else {
+                document.getElementById('candidateSearchBox').style.display = 'none';
+                document.getElementById('candidatePasteBox').style.display = 'none';
+                document.getElementById('aiResultBox').style.display = 'none';
+            }
 
             if (candidates.length === 0) {
                 list.innerHTML = '<div class="no-candidate-tip">未找到匹配的 Discogs 记录</div>';
@@ -3090,34 +3099,59 @@
                 shortDesc = truncateText(wikiExtract, 300);
             }
 
-            // 详细描述 - 微观视角
+            // 详细描述 - 使用维基百科完整内容按段落展示
             let longDesc = '';
 
-            // 录制背景
-            longDesc += '<h4>录制背景</h4>';
-            if (mbData && mbData.date) {
-                longDesc += `<p>专辑于${mbData.date.substring(0, 4)}年发行`;
-                if (mbData['label-info'] && mbData['label-info'][0]) {
-                    longDesc += `，由${mbData['label-info'][0].label.name}发行`;
-                }
-                longDesc += '。</p>';
-            } else {
-                longDesc += `<p>${artist}在${year || '这一时期'}录制并发行了这张专辑。</p>`;
-            }
-
-            // 专辑简介 - 使用完整内容
             if (wikiFullContent) {
-                longDesc += '<h4>专辑简介</h4>';
-                // 截取前800字作为简介
-                longDesc += `<p>${truncateText(wikiFullContent, 800)}</p>`;
+                // 将完整内容按段落拆分，每段用 <p> 包裹
+                const paragraphs = wikiFullContent.split(/\n\n+/).filter(p => p.trim().length > 20);
+                
+                // 如果有 MusicBrainz 数据，先显示录制背景
+                if (mbData && mbData.date) {
+                    longDesc += '<h4>发行信息</h4>';
+                    longDesc += '<p>';
+                    longDesc += mbData.date.substring(0, 4) + '年';
+                    if (mbData['label-info'] && mbData['label-info'][0]) {
+                        longDesc += `由${mbData['label-info'][0].label.name}发行`;
+                    }
+                    if (mbData['text-representation'] && mbData['text-representation'].language) {
+                        longDesc += `，语言：${mbData['text-representation'].language}`;
+                    }
+                    longDesc += '。</p>';
+                }
+
+                // 显示完整内容（最多2000字）
+                let charCount = 0;
+                const maxChars = 2000;
+                for (const para of paragraphs) {
+                    if (charCount >= maxChars) break;
+                    const trimmed = para.trim();
+                    if (trimmed.length < 20) continue;
+                    longDesc += `<p>${trimmed}</p>`;
+                    charCount += trimmed.length;
+                }
+
+                // 如果内容被截断，提示查看更多
+                if (charCount >= maxChars) {
+                    longDesc += '<p style="color: var(--text-muted); font-size: 13px;">内容已截断，点击语言切换按钮查看原文获取完整信息。</p>';
+                }
             } else if (wikiExtract) {
                 longDesc += '<h4>专辑简介</h4>';
                 longDesc += `<p>${wikiExtract}</p>`;
+            } else {
+                // 无维基数据，使用 MusicBrainz 信息
+                longDesc += '<h4>发行信息</h4>';
+                if (mbData && mbData.date) {
+                    longDesc += `<p>专辑于${mbData.date.substring(0, 4)}年发行`;
+                    if (mbData['label-info'] && mbData['label-info'][0]) {
+                        longDesc += `，由${mbData['label-info'][0].label.name}发行`;
+                    }
+                    longDesc += '。</p>';
+                } else {
+                    longDesc += `<p>${artist}在${year || '这一时期'}录制并发行了这张专辑。</p>`;
+                }
+                longDesc += '<p style="color: var(--text-muted);">暂无更多详细信息。</p>';
             }
-
-            // 更多信息提示
-            longDesc += '<h4>更多信息</h4>';
-            longDesc += '<p>关于这张专辑的更多录制细节、曲目解析和文化影响，建议查看维基百科或专业音乐网站获取完整资料。</p>';
 
             return { shortDesc, longDesc, wikiLang, wikiFullContent };
         }
@@ -3216,6 +3250,11 @@
                     lastCandidates = candidates;
                     lastSearchArtist = '';
                     lastSearchTitle = query;
+
+                    // 标记为搜索模式，隐藏候选列表的搜索框和导入框
+                    window.isSearchMode = true;
+                    document.getElementById('candidateSearchBox').style.display = 'none';
+                    document.getElementById('candidatePasteBox').style.display = 'none';
 
                     // 显示候选列表
                     showCandidates(candidates, '', query);
