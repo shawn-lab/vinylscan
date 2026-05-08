@@ -3023,20 +3023,30 @@
 
         // 分段翻译长文本
         async function translateLongText(text, zhipuKey) {
-            // 按章节分割
-            const sectionRegex = /(<h4>.*?<\/h4>)(.*?)(?=<h4>|$)/gs;
+            // 按章节分割 - 使用 DOM 解析
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
             const sections = [];
-            let match;
-            while ((match = sectionRegex.exec(text)) !== null) {
-                sections.push({
-                    title: match[1],
-                    content: match[2]
-                });
-            }
+            
+            // 查找所有 h4 标题
+            const headings = doc.querySelectorAll('h4');
+            headings.forEach(heading => {
+                const title = heading.outerHTML;
+                let content = '';
+                let sibling = heading.nextElementSibling;
+                while (sibling && sibling.tagName !== 'H4') {
+                    content += sibling.outerHTML || '';
+                    sibling = sibling.nextElementSibling;
+                }
+                if (content) {
+                    sections.push({ title, content });
+                }
+            });
             
             if (sections.length === 0) {
-                // 无法分割，返回原文
-                return text;
+                console.log('无法分割章节，尝试整体翻译');
+                // 尝试整体翻译（截断到2000字）
+                return await translateText(text.substring(0, 2000), 'short', 2);
             }
             
             console.log(`分段翻译: ${sections.length}个章节`);
@@ -3044,10 +3054,15 @@
             let translatedText = '';
             for (const section of sections) {
                 const sectionText = section.title + section.content;
-                if (sectionText.length > 1500) {
-                    // 单节太长，只翻译标题
-                    const titleTranslated = await translateText(section.title, 'short', 1);
-                    translatedText += titleTranslated + section.content;
+                const sectionLength = sectionText.replace(/<[^>]*>/g, '').length; // 计算纯文本长度
+                
+                if (sectionLength > 1000) {
+                    // 单节太长，分段翻译：先翻译标题，再翻译内容摘要
+                    console.log(`章节较长(${sectionLength}字)，分段翻译`);
+                    const titleTranslated = await translateText(section.title.replace(/<[^>]*>/g, ''), 'short', 1);
+                    const contentText = section.content.replace(/<[^>]*>/g, '').substring(0, 800);
+                    const contentTranslated = await translateText(contentText, 'short', 1);
+                    translatedText += `<h4>${titleTranslated}</h4><p>${contentTranslated}...</p>`;
                 } else {
                     const sectionTranslated = await translateText(sectionText, 'short', 1);
                     translatedText += sectionTranslated;
@@ -3645,14 +3660,21 @@ ${sectionsText}
 
             const translated = await translateText(window.currentAlbumDesc.longOriginal, 'long');
             
+            // 添加维基百科链接（如果存在）
+            let wikiLinkHtml = '';
+            if (window.currentAlbumDesc.wikiTitle && window.currentAlbumDesc.wikiLang) {
+                const wikiUrl = `https://${window.currentAlbumDesc.wikiLang}.wikipedia.org/wiki/${encodeURIComponent(window.currentAlbumDesc.wikiTitle)}`;
+                wikiLinkHtml = `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);"><a href="${wikiUrl}" target="_blank" style="color: var(--accent); text-decoration: none; font-size: 13px;">📖 在维基百科查看完整内容 →</a></div>`;
+            }
+
             if (translated !== window.currentAlbumDesc.longOriginal) {
                 window.currentAlbumDesc.longTranslated = translated;
-                detailsEl.innerHTML = translated;
+                detailsEl.innerHTML = translated + wikiLinkHtml;
                 // 添加翻译完成提示
                 detailsEl.innerHTML += '<div style="text-align: center; padding: 8px; color: var(--accent); font-size: 12px; margin-top: 16px; border-top: 1px solid var(--border);">✓ 翻译完成</div>';
             } else {
                 // 翻译失败，显示原文并提示
-                detailsEl.innerHTML = window.currentAlbumDesc.longOriginal;
+                detailsEl.innerHTML = window.currentAlbumDesc.longOriginal + wikiLinkHtml;
                 detailsEl.innerHTML += '<div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 13px; margin-top: 16px; background: var(--bg-card); border-radius: 8px;">⚠️ 翻译服务暂时不可用，已显示原文。您可以点击"原文"按钮重试。</div>';
             }
         }
