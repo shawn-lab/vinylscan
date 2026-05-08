@@ -3090,37 +3090,50 @@
 
         // 解析维基百科 HTML，提取章节结构
         function parseWikiSections(html) {
+            console.log('开始解析维基百科 HTML，长度:', html.length);
+            
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             const sections = [];
             
-            // 查找所有 h2 和 h3 标题
-            const headings = doc.querySelectorAll('h2, h3');
+            // 维基百科 API 返回的内容在 .mw-parser-output 容器内
+            const contentContainer = doc.querySelector('.mw-parser-output') || doc.body;
             
-            headings.forEach(heading => {
+            // 查找所有 h2 和 h3 标题
+            const headings = contentContainer.querySelectorAll('h2, h3');
+            console.log('找到标题数:', headings.length);
+            
+            headings.forEach((heading, index) => {
                 const title = heading.textContent.trim();
-                // 跳过 "Contents" 等导航标题
-                if (title === 'Contents' || title === '目录' || title === '[edit]') return;
+                console.log(`标题 ${index}:`, title);
                 
-                // 获取该标题下的内容（直到下一个同级或更高级标题）
+                // 跳过 "Contents" 等导航标题
+                if (title.includes('Contents') || title.includes('目录') || title === '[edit]') return;
+                
+                // 获取该标题下的内容
                 let content = '';
                 let sibling = heading.nextElementSibling;
+                
                 while (sibling && !['H2', 'H3'].includes(sibling.tagName)) {
-                    if (sibling.tagName === 'P') {
+                    // 收集段落、列表等内容
+                    if (['P', 'UL', 'OL'].includes(sibling.tagName)) {
                         content += sibling.textContent + ' ';
                     }
                     sibling = sibling.nextElementSibling;
                 }
                 
-                if (content.trim().length > 50) {
+                const trimmedContent = content.trim();
+                console.log(`标题 "${title}" 内容长度:`, trimmedContent.length);
+                
+                if (trimmedContent.length > 30) {
                     sections.push({
-                        title: title.replace(/\[edit\]/g, '').trim(),
-                        content: content.trim()
+                        title: title.replace(/\[edit\]/gi, '').trim(),
+                        content: trimmedContent
                     });
                 }
             });
             
-            console.log('解析到章节数:', sections.length);
+            console.log('✅ 解析到有效章节数:', sections.length);
             return sections;
         }
 
@@ -3155,11 +3168,17 @@
             // 简短描述（约300字）- 宏观视角
             let shortDesc = `${artist}于${year || '某年'}发行的《${title}》`;
 
-            if (wikiFullContent) {
-                // 使用完整内容，截取前300字左右
-                shortDesc = truncateText(wikiFullContent, 300);
-            } else if (wikiExtract) {
+            if (wikiExtract) {
+                // 优先使用摘要（纯文本）
                 shortDesc = truncateText(wikiExtract, 300);
+            } else if (wikiFullContent) {
+                // 从 HTML 中提取第一段文字
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(wikiFullContent, 'text/html');
+                const firstPara = doc.querySelector('p');
+                if (firstPara) {
+                    shortDesc = truncateText(firstPara.textContent, 300);
+                }
             }
 
             // 详细描述 - 解析维基百科章节结构
