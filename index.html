@@ -3235,23 +3235,6 @@
                 // 没有完整内容，使用摘要
                 longDesc = `<p>${wikiExtract}</p>`;
             } else {
-                // 尝试从 HTML 中提取内容
-                try {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(wikiFullContent, 'text/html');
-                    const paragraphs = doc.querySelectorAll('p');
-                    let content = '';
-                    paragraphs.forEach((p, i) => {
-                        if (i < 10) { // 只取前10段
-                            content += `<p>${p.textContent}</p>`;
-                        }
-                    });
-                    longDesc = content || '<p>暂无详细信息</p>';
-                } catch (e) {
-                    console.error('解析 HTML 失败:', e);
-                    longDesc = '<p>暂无详细信息</p>';
-                }
-            } else {
                 // 无维基数据，使用 MusicBrainz 信息
                 longDesc += '<h4>发行信息</h4>';
                 if (mbData && mbData.date) {
