@@ -3589,6 +3589,10 @@
                 title,  // 最简单的格式，如 "The New Sound"
                 `${title} (${artist} album)`,
                 `${title} (album)`,
+                `${title} (mixtape)`,
+                `${title} (EP)`,
+                `${title} (compilation)`,
+                `${title} (soundtrack)`,
                 `${title} (${artist})`,
                 `${artist} ${title}`,
                 `${title} (song)`,  // 有些专辑页面以歌曲名存在
@@ -3639,6 +3643,49 @@
                     } catch (err) {
                         console.warn(`维基百科 ${wiki.name} 尝试失败:`, pageTitle, err.message);
                     }
+                }
+            }
+            
+            // 所有固定格式都没找到，尝试维基百科搜索 API
+            console.log('尝试维基百科搜索 API...');
+            for (const wiki of wikis) {
+                try {
+                    const searchUrl = `https://${wiki.lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(title + ' ' + artist)}&srnamespace=0&srlimit=5&format=json&origin=*`;
+                    const searchResp = await fetch(searchUrl);
+                    if (searchResp.ok) {
+                        const searchData = await searchResp.json();
+                        if (searchData.query && searchData.query.search) {
+                            for (const result of searchData.query.search) {
+                                const pageTitle = result.title;
+                                // 验证搜索结果是否匹配
+                                const contentToCheck = (result.snippet || '').toLowerCase();
+                                const artistLower = artist.toLowerCase();
+                                const titleLower = title.toLowerCase();
+                                const match = contentToCheck.includes(artistLower) || 
+                                             contentToCheck.includes(titleLower) ||
+                                             pageTitle.toLowerCase().includes(titleLower);
+                                
+                                if (match) {
+                                    console.log(`✅ 搜索 API 找到 (${wiki.name}):`, pageTitle);
+                                    const summaryUrl = `https://${wiki.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
+                                    const summaryResp = await fetch(summaryUrl);
+                                    if (summaryResp.ok) {
+                                        const summaryData = await summaryResp.json();
+                                        if (summaryData.extract && summaryData.extract.length > 50) {
+                                            const fullContent = await fetchWikipediaFullContent(wiki.lang, pageTitle);
+                                            return {
+                                                ...summaryData,
+                                                fullContent: fullContent,
+                                                lang: wiki.lang
+                                            };
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`维基百科搜索 API 失败 (${wiki.name}):`, err.message);
                 }
             }
             
