@@ -1406,34 +1406,6 @@
             border-color: var(--success);
         }
 
-        /* ===== IMPORT LINK BUTTON ===== */
-        .import-actions {
-            display: flex;
-            justify-content: center;
-            margin-top: 12px;
-        }
-
-        .import-link-btn {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 16px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            color: var(--text-secondary);
-            font-size: 13px;
-            cursor: pointer;
-            transition: var(--transition);
-            font-family: inherit;
-        }
-
-        .import-link-btn:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-            background: rgba(139, 92, 246, 0.08);
-        }
-
         /* ===== PASTE LINK MODAL ===== */
         .paste-link-modal {
             display: none;
@@ -1705,12 +1677,8 @@
         <section class="search-section">
             <div class="search-box">
                 <input type="text" class="search-input" id="albumSearchInput" placeholder="搜索专辑或艺术家..." onkeydown="if(event.key==='Enter')searchAlbum()">
+                <button class="search-btn link-btn" onclick="openPasteLinkModal()" title="粘贴链接导入">🔗</button>
                 <button class="search-btn" onclick="searchAlbum()">🔍</button>
-            </div>
-            <div class="import-actions">
-                <button class="import-link-btn" onclick="openPasteLinkModal()">
-                    <span>🔗</span> 粘贴链接
-                </button>
             </div>
         </section>
 
