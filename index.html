@@ -3193,20 +3193,30 @@
 
             if (wikiFullContent) {
                 // 优先使用完整 HTML 内容
+                console.log('开始解析维基百科 HTML，长度:', wikiFullContent.length);
                 try {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(wikiFullContent, 'text/html');
                     
+                    // 检查是否有 .mw-parser-output
+                    const outputDiv = doc.querySelector('.mw-parser-output');
+                    console.log('找到 .mw-parser-output:', !!outputDiv);
+                    
                     // 提取信息框（infobox）后的第一段作为专辑概述
-                    const firstPara = doc.querySelector('.mw-parser-output > p, .mw-parser-output > div > p');
+                    const firstPara = doc.querySelector('.mw-parser-output > p, .mw-parser-output > div > p, p');
+                    console.log('找到第一段:', !!firstPara, firstPara ? firstPara.textContent.substring(0, 50) : '');
                     if (firstPara) {
                         longDesc += `<p>${firstPara.textContent}</p>`;
                     }
                     
                     // 提取各个章节
                     const headings = doc.querySelectorAll('h2, h3');
-                    headings.forEach(heading => {
+                    console.log('找到标题数:', headings.length);
+                    
+                    headings.forEach((heading, i) => {
                         const title = heading.textContent.trim().replace(/\[edit\]/gi, '');
+                        console.log(`标题 ${i}:`, title);
+                        
                         // 跳过目录和外部链接等章节
                         if (['Contents', '目录', 'External links', 'See also', 'References'].some(t => title.includes(t))) return;
                         
@@ -3220,11 +3230,15 @@
                             sibling = sibling.nextElementSibling;
                         }
                         
+                        console.log(`标题 "${title}" 内容长度:`, sectionContent.trim().length);
+                        
                         if (sectionContent.trim().length > 50) {
                             longDesc += `<h4>${title}</h4>`;
                             longDesc += `<p>${sectionContent.trim().substring(0, 500)}${sectionContent.length > 500 ? '...' : ''}</p>`;
                         }
                     });
+                    
+                    console.log('最终 longDesc 长度:', longDesc.length);
                     
                 } catch (e) {
                     console.error('解析 HTML 失败:', e);
