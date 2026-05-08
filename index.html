@@ -1406,6 +1406,150 @@
             border-color: var(--success);
         }
 
+        /* ===== IMPORT LINK BUTTON ===== */
+        .import-actions {
+            display: flex;
+            justify-content: center;
+            margin-top: 12px;
+        }
+
+        .import-link-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+
+        .import-link-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(139, 92, 246, 0.08);
+        }
+
+        /* ===== PASTE LINK MODAL ===== */
+        .paste-link-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .paste-link-modal.active {
+            display: flex;
+        }
+
+        .paste-link-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+        }
+
+        .paste-link-content {
+            position: relative;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            width: 90%;
+            max-width: 480px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .paste-link-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .paste-link-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .paste-link-close {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            color: var(--text-muted);
+            font-size: 16px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .paste-link-close:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .paste-link-hint {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .paste-link-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            outline: none;
+            transition: var(--transition);
+            box-sizing: border-box;
+        }
+
+        .paste-link-textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .paste-link-textarea::placeholder {
+            color: var(--text-muted);
+            opacity: 0.6;
+        }
+
+        .paste-link-submit {
+            width: 100%;
+            margin-top: 12px;
+            padding: 12px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+
+        .paste-link-submit:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
         /* ===== CAMERA MODAL ===== */
         .camera-modal {
             position: fixed;
@@ -1563,6 +1707,11 @@
                 <input type="text" class="search-input" id="albumSearchInput" placeholder="搜索专辑或艺术家..." onkeydown="if(event.key==='Enter')searchAlbum()">
                 <button class="search-btn" onclick="searchAlbum()">🔍</button>
             </div>
+            <div class="import-actions">
+                <button class="import-link-btn" onclick="openPasteLinkModal()">
+                    <span>🔗</span> 粘贴链接
+                </button>
+            </div>
         </section>
 
         <!-- CAPTURE SECTION -->
@@ -1671,10 +1820,6 @@
                 <input type="text" class="form-input" id="discogsSearchInput" placeholder="输入关键词重新搜索..." onkeydown="if(event.key==='Enter')retryDiscogsSearch()">
                 <button class="search-box-btn" onclick="retryDiscogsSearch()">搜索</button>
             </div>
-            <div class="discogs-paste-box" id="candidatePasteBox">
-                <input type="text" class="form-input" id="discogsUrlInput" placeholder="或粘贴 Discogs 专辑链接，如 https://www.discogs.com/release/4027223-..." onkeydown="if(event.key==='Enter')loadFromDiscogsUrl()">
-                <button class="search-box-btn" onclick="loadFromDiscogsUrl()">导入</button>
-            </div>
             <div class="candidate-list" id="candidateList"></div>
         </section>
 
@@ -1747,6 +1892,22 @@
         </div>
         <div class="camera-footer">
             <button class="shutter-btn" id="shutterBtn" onclick="takePhoto()"></button>
+        </div>
+    </div>
+
+    <!-- PASTE LINK MODAL -->
+    <div class="paste-link-modal" id="pasteLinkModal">
+        <div class="paste-link-overlay" onclick="closePasteLinkModal()"></div>
+        <div class="paste-link-content">
+            <div class="paste-link-header">
+                <div class="paste-link-title">🔗 粘贴链接导入</div>
+                <button class="paste-link-close" onclick="closePasteLinkModal()">✕</button>
+            </div>
+            <div class="paste-link-body">
+                <div class="paste-link-hint">支持 Discogs、网易云音乐、Spotify 链接或分享文本</div>
+                <textarea class="paste-link-textarea" id="pasteLinkInput" placeholder="粘贴链接或分享文本，例如：&#10;https://www.discogs.com/release/4027223&#10;分享Tirzah的专辑《trip9love...???》https://163cn.tv/6HIsw9C (@网易云音乐)&#10;https://open.spotify.com/album/0lCBq1RnnickocN4qoHHhK" rows="4"></textarea>
+                <button class="paste-link-submit" onclick="handlePasteLink()">导入</button>
+            </div>
         </div>
     </div>
 
@@ -2307,10 +2468,9 @@
             section.style.display = 'block';
             list.innerHTML = '';
 
-            // 如果不是搜索模式，显示搜索框和导入框
+            // 如果不是搜索模式，显示搜索框
             if (!window.isSearchMode) {
                 document.getElementById('candidateSearchBox').style.display = '';
-                document.getElementById('candidatePasteBox').style.display = '';
                 // 显示 AI 识别结果
                 document.getElementById('aiResultBox').style.display = '';
                 document.getElementById('aiResultText').textContent = `${aiArtist} - ${aiTitle}`;
@@ -2318,7 +2478,6 @@
                 document.getElementById('discogsSearchInput').value = `${aiArtist} ${aiTitle}`;
             } else {
                 document.getElementById('candidateSearchBox').style.display = 'none';
-                document.getElementById('candidatePasteBox').style.display = 'none';
                 document.getElementById('aiResultBox').style.display = 'none';
             }
 
@@ -4172,6 +4331,146 @@ ${sectionsText}
             detailsEl.innerHTML = finalContent;
         }
 
+        // ===== PASTE LINK IMPORT =====
+        function openPasteLinkModal() {
+            document.getElementById('pasteLinkModal').classList.add('active');
+            const textarea = document.getElementById('pasteLinkInput');
+            textarea.value = '';
+            // 尝试自动读取剪贴板
+            if (navigator.clipboard && navigator.clipboard.readText) {
+                navigator.clipboard.readText().then(text => {
+                    if (text && text.trim()) {
+                        textarea.value = text.trim();
+                        // 如果剪贴板内容看起来像链接，自动处理
+                        if (text.match(/discogs\.com\/release\/\d+/) || 
+                            text.match(/分享.+?的[专单曲|专辑|EP]*[《「]/) ||
+                            text.match(/open\.spotify\.com\/album\//) ||
+                            text.match(/163cn\.tv\//) ||
+                            text.match(/music\.163\.com/)) {
+                            // 自动处理
+                            handlePasteLink();
+                        }
+                    }
+                }).catch(() => {
+                    // 剪贴板权限被拒绝，手动粘贴
+                    textarea.focus();
+                });
+            } else {
+                textarea.focus();
+            }
+        }
+
+        function closePasteLinkModal() {
+            document.getElementById('pasteLinkModal').classList.remove('active');
+        }
+
+        // 识别链接类型并处理
+        async function handlePasteLink() {
+            const input = document.getElementById('pasteLinkInput').value.trim();
+            if (!input) {
+                showToast('请粘贴链接或分享文本', 'error');
+                return;
+            }
+
+            closePasteLinkModal();
+
+            // 1. 检测 Discogs 链接
+            const discogsMatch = input.match(/discogs\.com\/release\/(\d+)/);
+            if (discogsMatch) {
+                console.log('识别为 Discogs 链接:', discogsMatch[1]);
+                await importFromDiscogsId(discogsMatch[1]);
+                return;
+            }
+
+            // 2. 检测网易云音乐分享文本
+            const neteaseMatch = input.match(/分享(.+?)的[专单曲|专辑|EP|单曲]*[《「](.+?)[》」]/);
+            if (neteaseMatch) {
+                const artist = neteaseMatch[1].trim();
+                const title = neteaseMatch[2].trim();
+                console.log('识别为网易云音乐分享:', artist, '-', title);
+                await importFromArtistTitle(artist, title, '网易云音乐');
+                return;
+            }
+
+            // 3. 检测 Spotify 链接
+            const spotifyMatch = input.match(/open\.spotify\.com\/album\/([a-zA-Z0-9]+)/);
+            if (spotifyMatch) {
+                console.log('识别为 Spotify 链接:', spotifyMatch[1]);
+                showToast('Spotify 链接暂不支持，请先手动输入专辑名和艺术家名搜索', 'error');
+                return;
+            }
+
+            // 4. 无法识别，提示用户
+            showToast('无法识别链接类型，请粘贴 Discogs、网易云音乐或 Spotify 的链接', 'error');
+        }
+
+        // 从 Discogs ID 直接导入
+        async function importFromDiscogsId(releaseId) {
+            showLoading();
+            hideResults();
+
+            try {
+                updateLoading('正在从 Discogs 导入...', '');
+                const detail = await getDiscogsReleaseDetail(releaseId);
+                const data = {
+                    title: detail.title || '',
+                    artist: (detail.artists && detail.artists[0]?.name) || '',
+                    year: detail.year || '',
+                    coverUrl: (detail.images && detail.images[0]?.uri) || '',
+                    genres: detail.genres || [],
+                    styles: detail.styles || [],
+                    label: (detail.labels && detail.labels[0]?.name) || '',
+                    country: detail.country || '',
+                    tracklist: (detail.tracklist || []).map(t => ({
+                        position: t.position || '',
+                        title: t.title,
+                        duration: t.duration || '',
+                        artist: t.artists ? t.artists.map(a => a.name).join(', ') : ''
+                    })),
+                    discogsUrl: `https://www.discogs.com/release/${releaseId}`
+                };
+                displayResult(data);
+                addToHistory(data);
+                showToast('导入成功 ❤️', 'success');
+            } catch (err) {
+                showError('导入失败', err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 从艺术家名+专辑名搜索 Discogs
+        async function importFromArtistTitle(artist, title, source) {
+            const captureSection = document.querySelector('.capture-section');
+            captureSection.style.display = 'none';
+            showLoading();
+            hideResults();
+            updateLoading('正在搜索...', `${source}: ${artist} - ${title}`);
+
+            try {
+                const candidates = await searchDiscogs(artist, title);
+
+                if (candidates && candidates.length > 0) {
+                    lastCandidates = candidates;
+                    lastSearchArtist = artist;
+                    lastSearchTitle = title;
+
+                    window.isSearchMode = true;
+                    showCandidates(candidates, artist, title);
+                    showToast(`找到 ${candidates.length} 个结果`, 'success');
+                } else {
+                    showToast('未找到匹配的专辑，请尝试其他关键词', 'error');
+                    captureSection.style.display = '';
+                }
+            } catch (err) {
+                console.error('搜索失败:', err);
+                showToast('搜索失败: ' + err.message, 'error');
+                captureSection.style.display = '';
+            } finally {
+                hideLoading();
+            }
+        }
+
         // ===== ALBUM SEARCH =====
         async function searchAlbum() {
             const input = document.getElementById('albumSearchInput');
@@ -4198,10 +4497,9 @@ ${sectionsText}
                     lastSearchArtist = '';
                     lastSearchTitle = query;
 
-                    // 标记为搜索模式，隐藏候选列表的搜索框和导入框
+                    // 标记为搜索模式，隐藏候选列表的搜索框
                     window.isSearchMode = true;
                     document.getElementById('candidateSearchBox').style.display = 'none';
-                    document.getElementById('candidatePasteBox').style.display = 'none';
 
                     // 显示候选列表
                     showCandidates(candidates, '', query);
