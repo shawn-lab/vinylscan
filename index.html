@@ -2967,29 +2967,9 @@
             }
         }
 
-        // 翻译文本（百度翻译 > MyMemory > 智谱 AI）
-        async function translateText(text, type, maxRetries = 2) {
-            // 1. 先尝试百度翻译（稳定、额度大）
-            try {
-                const translated = await translateWithBaidu(text, type);
-                if (translated && translated !== text) {
-                    return translated;
-                }
-            } catch (err) {
-                console.warn('百度翻译失败:', err.message);
-            }
-            
-            // 2. 百度失败，尝试 MyMemory
-            try {
-                const translated = await translateWithMyMemory(text, type);
-                if (translated && translated !== text) {
-                    return translated;
-                }
-            } catch (err) {
-                console.warn('MyMemory 翻译失败:', err.message);
-            }
-            
-            // 3. 都失败，尝试智谱 AI
+        // 翻译文本（智谱 AI > MyMemory）
+        async function translateText(text, type, maxRetries = 3) {
+            // 1. 先尝试智谱 AI（翻译质量好）
             const zhipuKey = getZhipuKey();
             if (zhipuKey) {
                 try {
@@ -3000,6 +2980,16 @@
                 } catch (err) {
                     console.warn('智谱 AI 翻译失败:', err.message);
                 }
+            }
+            
+            // 2. 智谱失败，尝试 MyMemory
+            try {
+                const translated = await translateWithMyMemory(text, type);
+                if (translated && translated !== text) {
+                    return translated;
+                }
+            } catch (err) {
+                console.warn('MyMemory 翻译失败:', err.message);
             }
             
             // 都失败了，返回原文
@@ -3052,7 +3042,8 @@
             });
             
             // 使用 CORS 代理
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(`https://fanyi-api.baidu.com/api/trans/vip/translate?${params.toString()}`)}`;
+            const targetUrl = `https://fanyi-api.baidu.com/api/trans/vip/translate?${params.toString()}`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
             
             const response = await fetch(proxyUrl, {
                 headers: { 'Content-Type': 'application/json' }
