@@ -3153,35 +3153,9 @@
                 
                 paragraphs = paragraphs.filter(p => p.trim().length > 20);
                 
-                // 如果有 MusicBrainz 数据，先显示录制背景
-                if (mbData && mbData.date) {
-                    longDesc += '<h4>发行信息</h4>';
-                    longDesc += '<p>';
-                    longDesc += mbData.date.substring(0, 4) + '年';
-                    if (mbData['label-info'] && mbData['label-info'][0]) {
-                        longDesc += `由${mbData['label-info'][0].label.name}发行`;
-                    }
-                    if (mbData['text-representation'] && mbData['text-representation'].language) {
-                        longDesc += `，语言：${mbData['text-representation'].language}`;
-                    }
-                    longDesc += '。</p>';
-                }
-
-                // 显示完整内容（最多2000字）
-                let charCount = 0;
-                const maxChars = 2000;
-                for (const para of paragraphs) {
-                    if (charCount >= maxChars) break;
-                    const trimmed = para.trim();
-                    if (trimmed.length < 20) continue;
-                    longDesc += `<p>${trimmed}</p>`;
-                    charCount += trimmed.length;
-                }
-
-                // 如果内容被截断，提示查看更多
-                if (charCount >= maxChars) {
-                    longDesc += '<p style="color: var(--text-muted); font-size: 13px;">内容已截断，点击语言切换按钮查看原文获取完整信息。</p>';
-                }
+                // 使用 AI 将内容组织成结构化章节
+                const structuredContent = await organizeWikiContent(wikiFullContent, artist, title);
+                longDesc = structuredContent;
             } else if (wikiExtract) {
                 longDesc += '<h4>专辑简介</h4>';
                 longDesc += `<p>${wikiExtract}</p>`;
@@ -3231,6 +3205,67 @@
             `;
 
             return { short, long };
+        }
+
+        // 使用 AI 将维基百科内容组织成结构化章节
+        async function organizeWikiContent(content, artist, title) {
+            const zhipuKey = getZhipuKey();
+            if (!zhipuKey) {
+                // 没有 AI Key，直接按段落展示
+                const paragraphs = content.split(/\n+/).filter(p => p.trim().length > 20);
+                return paragraphs.map(p => `<p>${p.trim()}</p>`).join('');
+            }
+
+            try {
+                const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${zhipuKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'glm-4-flash',
+                        messages: [{
+                            role: 'user',
+                            content: `请将以下关于专辑《${title}》的维基百科内容，重新组织成结构化的 HTML 格式。按以下章节分类：
+
+1. 录制背景 - 关于录制过程、录音室、制作人的信息
+2. 音乐风格 - 关于流派、风格、音乐特点的信息  
+3. 歌词主题 - 关于歌词内容、主题、概念的信息
+4. 发行宣传 - 关于发行日期、唱片公司、宣传活动的信
+5. 乐评反响 - 关于评论、评分、反响的信息
+
+如果某个章节没有相关信息，可以省略。每个章节用 <h4>章节标题</h4> 开头，内容用 <p>段落</p> 包裹。
+
+原始内容：
+${content.substring(0, 3000)}
+
+请直接返回 HTML 代码，不要添加任何解释。`
+                        }],
+                        temperature: 0.3
+                    })
+                });
+
+                if (!response.ok) throw new Error('AI organization failed');
+                
+                const data = await response.json();
+                const organized = data.choices[0].message.content.trim();
+                
+                // 提取 HTML 部分
+                const htmlMatch = organized.match(/<h4>.*<\/p>/s);
+                if (htmlMatch) {
+                    return htmlMatch[0];
+                }
+                
+                // 如果没有匹配到 HTML，返回原始内容
+                const paragraphs = content.split(/\n+/).filter(p => p.trim().length > 20);
+                return paragraphs.map(p => `<p>${p.trim()}</p>`).join('');
+            } catch (err) {
+                console.error('AI 结构化失败:', err);
+                // 失败时直接按段落展示
+                const paragraphs = content.split(/\n+/).filter(p => p.trim().length > 20);
+                return paragraphs.map(p => `<p>${p.trim()}</p>`).join('');
+            }
         }
 
         // 标签页切换（支持曲目/详情）
