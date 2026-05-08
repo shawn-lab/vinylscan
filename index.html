@@ -2249,10 +2249,7 @@
                 const li = document.createElement('li');
                 li.className = 'track-item';
                 const searchQuery = encodeURIComponent(`${data.artist} ${track.title}`);
-                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                const neteaseUrl = isMobile
-                    ? `https://y.music.163.com/m/search?query=${searchQuery}`
-                    : `https://music.163.com/#/search/m/?s=${searchQuery}`;
+                const neteaseUrl = `orpheus://search/${searchQuery}`;
                 li.innerHTML = `
                     <span class="track-number">${track.position || (i + 1)}</span>
                     <div class="track-info">
