@@ -2864,6 +2864,10 @@
         function showHistoryDetail(index) {
             const item = scanHistory[index];
             if (!item) return;
+            // 隐藏历史/收藏区域
+            document.getElementById('historySection').style.display = 'none';
+            document.getElementById('favoritesSection').style.display = 'none';
+            document.getElementById('tabSwitcher').style.display = 'none';
             // 补全旧数据可能缺失的字段
             const full = {
                 title: item.title,
@@ -2955,6 +2959,11 @@
         function showFavDetail(index) {
             const item = favorites[index];
             if (!item) return;
+
+            // 隐藏历史/收藏区域
+            document.getElementById('historySection').style.display = 'none';
+            document.getElementById('favoritesSection').style.display = 'none';
+            document.getElementById('tabSwitcher').style.display = 'none';
 
             // 如果有 Discogs URL 但没有 tracklist，尝试重新获取
             if ((!item.tracklist || item.tracklist.length === 0) && item.discogsUrl) {
