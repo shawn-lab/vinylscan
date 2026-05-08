@@ -4430,7 +4430,7 @@ ${content.substring(0, 3000)}
             }
         }
 
-        // 触发 AI 搜索（用户点击按钮）
+        // 触发 AI 搜索（用户点击按钮或切换标签时自动调用）
         async function triggerAISearch() {
             const container = document.getElementById('aiSearchContent');
             const artist = window.currentAlbumData?.artist || '';
@@ -4442,7 +4442,12 @@ ${content.substring(0, 3000)}
                 return;
             }
 
+            // 如果已经在搜索中或已有结果，不重复触发
+            if (container.dataset.searching === 'true') return;
+            if (container.dataset.searched === 'true') return;
+
             // 显示加载状态
+            container.dataset.searching = 'true';
             container.innerHTML = `
                 <div class="ai-search-placeholder">
                     <div class="ai-search-icon" style="animation: pulse 1.5s infinite;">🤖</div>
@@ -4452,8 +4457,10 @@ ${content.substring(0, 3000)}
             `;
 
             const result = await searchAlbumWithGemini(artist, title, year);
+            container.dataset.searching = 'false';
 
             if (result) {
+                container.dataset.searched = 'true';
                 container.innerHTML = `
                     <div class="ai-search-result">
                         ${result.long.replace(/\n/g, '<br>')}
@@ -4482,6 +4489,11 @@ ${content.substring(0, 3000)}
                 document.getElementById('tracksTab').classList.toggle('active', tab === 'tracks');
                 document.getElementById('detailsTab').classList.toggle('active', tab === 'details');
                 document.getElementById('aisearchTab').classList.toggle('active', tab === 'aisearch');
+
+                // 切换到 AI 搜索时，自动触发搜索
+                if (tab === 'aisearch') {
+                    triggerAISearch();
+                }
 
                 // 切换到详情时，懒加载翻译
                 if (tab === 'details' && window.currentAlbumDesc && window.currentAlbumDesc.longNeedsTranslation && !window.currentAlbumDesc.longTranslated) {
