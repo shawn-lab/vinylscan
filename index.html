@@ -1854,7 +1854,7 @@
                         <div class="ai-search-placeholder">
                             <div class="ai-search-icon">🤖</div>
                             <div class="ai-search-title">AI 联网搜索</div>
-                            <div class="ai-search-desc">使用智谱 AI 搜索专辑相关信息，补充维基百科未收录的内容</div>
+                            <div class="ai-search-desc">使用 AI 搜索专辑相关信息，补充维基百科未收录的内容</div>
                             <button class="ai-search-btn" onclick="triggerAISearch()">🔍 开始搜索</button>
                         </div>
                     </div>
@@ -2771,7 +2771,7 @@
                 <div class="ai-search-placeholder">
                     <div class="ai-search-icon">🤖</div>
                     <div class="ai-search-title">AI 联网搜索</div>
-                    <div class="ai-search-desc">使用智谱 AI 搜索专辑相关信息，补充维基百科未收录的内容</div>
+                    <div class="ai-search-desc">使用 AI 搜索专辑相关信息，补充维基百科未收录的内容</div>
                     <button class="ai-search-btn" onclick="triggerAISearch()">🔍 开始搜索</button>
                 </div>
             `;
@@ -4190,12 +4190,65 @@
             return result || text.substring(0, maxLength) + '...';
         }
 
-        // 智谱 AI 联网搜索专辑信息（维基百科兜底）
+        // Tavily + 智谱 AI 联网搜索专辑信息
         async function searchAlbumWithGemini(artist, title, year) {
-            const zhipuKey = getZhipuKey();
-            if (!zhipuKey) return null;
+            // 1. 优先使用 Tavily（国际化搜索）
+            const tavilyKey = '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';
+            if (tavilyKey) {
+                try {
+                    const query = `${artist} ${title} album${year ? ' ' + year : ''}`;
+                    const response = await fetch('https://api.tavily.com/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            query: query,
+                            api_key: tavilyKey,
+                            search_depth: 'advanced',
+                            max_results: 5,
+                            include_answer: true
+                        }),
+                        signal: AbortSignal.timeout(30000)
+                    });
 
-            const prompt = `请搜索专辑"${title}"（艺术家：${artist}${year ? '，发行年份：' + year : ''}）的信息，并用中文详细介绍。
+                    if (!response.ok) throw new Error(`Tavily error: ${response.status}`);
+
+                    const data = await response.json();
+                    const answer = data.answer;
+                    const results = data.results || [];
+
+                    if (answer || results.length > 0) {
+                        // 整合搜索结果
+                        let content = '';
+                        
+                        if (answer) {
+                            content += answer + '\n\n';
+                        }
+
+                        // 补充搜索结果中的详细信息
+                        for (const r of results.slice(0, 3)) {
+                            if (r.content && r.content.length > 30) {
+                                content += `**${r.title}**\n${r.content}\n\n`;
+                            }
+                        }
+
+                        if (content.trim()) {
+                            return {
+                                short: answer || (results[0]?.content || '').substring(0, 200),
+                                long: content.trim(),
+                                source: 'Tavily AI 搜索'
+                            };
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Tavily 搜索失败:', err.message);
+                }
+            }
+
+            // 2. 兜底使用智谱 AI 联网搜索
+            const zhipuKey = getZhipuKey();
+            if (zhipuKey) {
+                try {
+                    const prompt = `请搜索专辑"${title}"（艺术家：${artist}${year ? '，发行年份：' + year : ''}）的信息，并用中文详细介绍。
 
 请包括以下内容（如果搜到的话）：
 - 专辑背景和创作过程
@@ -4206,40 +4259,38 @@
 
 如果搜不到具体信息，请根据艺术家和专辑名合理推测，并标注"以下信息可能不完全准确"。`;
 
-            try {
-                const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${zhipuKey}`
-                    },
-                    body: JSON.stringify({
-                        model: 'glm-4-flash',
-                        messages: [{ role: 'user', content: prompt }],
-                        tools: [{ type: 'web_search', web_search: { enable: true, search_result: true } }],
-                        tool_choice: 'auto'
-                    }),
-                    signal: AbortSignal.timeout(30000)
-                });
+                    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${zhipuKey}`
+                        },
+                        body: JSON.stringify({
+                            model: 'glm-4-flash',
+                            messages: [{ role: 'user', content: prompt }],
+                            tools: [{ type: 'web_search', web_search: { enable: true, search_result: true } }],
+                            tool_choice: 'auto'
+                        }),
+                        signal: AbortSignal.timeout(30000)
+                    });
 
-                if (!response.ok) {
-                    throw new Error(`智谱 API error: ${response.status}`);
+                    if (!response.ok) throw new Error(`智谱 API error: ${response.status}`);
+
+                    const data = await response.json();
+                    const text = data.choices?.[0]?.message?.content;
+                    if (!text) throw new Error('智谱返回空内容');
+
+                    return {
+                        short: text.substring(0, text.indexOf('\n', 100) > 0 ? text.indexOf('\n', 100) : 200),
+                        long: text,
+                        source: '智谱 AI 联网搜索'
+                    };
+                } catch (err) {
+                    console.warn('智谱 AI 联网搜索失败:', err.message);
                 }
-
-                const data = await response.json();
-                const text = data.choices?.[0]?.message?.content;
-                
-                if (!text) throw new Error('智谱返回空内容');
-
-                return {
-                    short: text.substring(0, text.indexOf('\n', 100) > 0 ? text.indexOf('\n', 100) : 200),
-                    long: text,
-                    source: '智谱 AI 联网搜索'
-                };
-            } catch (err) {
-                console.warn('智谱 AI 联网搜索失败:', err.message);
-                return null;
             }
+
+            return null;
         }
 
         // AI兜底生成
