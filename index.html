@@ -2916,6 +2916,8 @@
 
             try {
                 const label = type === 'short' ? '简短介绍' : '详细介绍';
+                console.log(`开始翻译${label}，原文长度: ${text.length}`);
+                
                 const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -2932,7 +2934,11 @@
                     })
                 });
 
-                if (!response.ok) throw new Error('Translation API failed');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('翻译API错误:', response.status, errorText);
+                    throw new Error(`Translation API failed: ${response.status}`);
+                }
                 
                 const data = await response.json();
                 const translated = data.choices[0].message.content.trim();
