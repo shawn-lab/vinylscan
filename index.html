@@ -2274,7 +2274,12 @@
             // 网易云音乐链接：搜索艺术家+专辑名
             const neteaseLink = document.getElementById('neteaseLink');
             const neteaseQuery = encodeURIComponent(`${data.artist} ${data.title}`);
-           neteaseLink.href = `https://music.163.com/search/#/type=1&s=${neteaseQuery}`;
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            if (isMobile) {
+                neteaseLink.href = `orpheus://`;
+            } else {
+                neteaseLink.href = `https://music.163.com/#/search/m/?s=${neteaseQuery}`;
+            }
             neteaseLink.style.display = 'flex';
 
             // "查看其他匹配"按钮：有候选且候选数>1时显示
