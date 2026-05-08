@@ -2950,53 +2950,111 @@
             }
         }
 
-        // 智谱AI翻译 - 单独翻译文本
-        async function translateText(text, type) {
+        // 智谱AI翻译 - 单独翻译文本（带重试机制）
+        async function translateText(text, type, maxRetries = 2) {
             const zhipuKey = getZhipuKey();
             if (!zhipuKey) {
                 console.warn('未配置智谱AI Key，跳过翻译');
                 return text;
             }
 
-            try {
-                const label = type === 'short' ? '简短介绍' : '详细介绍';
-                console.log(`开始翻译${label}，原文长度: ${text.length}`);
-                
-                // 针对详情内容，保留 HTML 标签
-                const prompt = type === 'long' 
-                    ? `请将以下专辑详细介绍翻译成中文。内容包含 HTML 标签（如 <h4>、<p>），请保留这些标签，只翻译标签内的文字内容。只返回翻译结果，不要添加任何解释：\n\n${text}`
-                    : `请将以下专辑${label}翻译成中文，只返回翻译结果，不要添加任何解释或额外内容：\n\n${text}`;
-                
-                const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${zhipuKey}`
-                    },
-                    body: JSON.stringify({
-                        model: 'glm-4-flash',
-                        messages: [{
-                            role: 'user',
-                            content: prompt
-                        }],
-                        temperature: 0.3
-                    })
-                });
+            const label = type === 'short' ? '简短介绍' : '详细介绍';
+            
+            // 如果内容太长，分段翻译
+            if (type === 'long' && text.length > 2000) {
+                console.log(`内容较长(${text.length}字)，分段翻译`);
+                return await translateLongText(text, zhipuKey);
+            }
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('翻译API错误:', response.status, errorText);
-                    throw new Error(`Translation API failed: ${response.status}`);
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    if (attempt > 0) {
+                        console.log(`翻译重试第${attempt}次...`);
+                        await new Promise(r => setTimeout(r, 1000 * attempt)); // 递增延迟
+                    }
+                    
+                    console.log(`开始翻译${label}，原文长度: ${text.length}`);
+                    
+                    const prompt = type === 'long' 
+                        ? `请将以下专辑详细介绍翻译成中文。内容包含 HTML 标签（如 <h4>、<p>），请保留这些标签，只翻译标签内的文字内容。只返回翻译结果，不要添加任何解释：\n\n${text}`
+                        : `请将以下专辑${label}翻译成中文，只返回翻译结果，不要添加任何解释或额外内容：\n\n${text}`;
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+                    
+                    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${zhipuKey}`
+                        },
+                        body: JSON.stringify({
+                            model: 'glm-4-flash',
+                            messages: [{
+                                role: 'user',
+                                content: prompt
+                            }],
+                            temperature: 0.3
+                        }),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('翻译API错误:', response.status, errorText);
+                        throw new Error(`Translation API failed: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    const translated = data.choices[0].message.content.trim();
+                    console.log(`翻译${label}完成，原文${text.length}字，译文${translated.length}字`);
+                    return translated;
+                } catch (err) {
+                    console.error(`翻译失败(尝试${attempt + 1}/${maxRetries + 1}):`, err.message);
+                    if (attempt === maxRetries) {
+                        console.log('翻译重试次数用完，返回原文');
+                        return text;
+                    }
                 }
-                
-                const data = await response.json();
-                const translated = data.choices[0].message.content.trim();
-                console.log(`翻译${label}完成，原文${text.length}字，译文${translated.length}字`);
-                return translated;
-            } catch (err) {
-                console.error('翻译失败:', err);
+            }
+            return text;
+        }
+
+        // 分段翻译长文本
+        async function translateLongText(text, zhipuKey) {
+            // 按章节分割
+            const sectionRegex = /(<h4>.*?<\/h4>)(.*?)(?=<h4>|$)/gs;
+            const sections = [];
+            let match;
+            while ((match = sectionRegex.exec(text)) !== null) {
+                sections.push({
+                    title: match[1],
+                    content: match[2]
+                });
+            }
+            
+            if (sections.length === 0) {
+                // 无法分割，返回原文
                 return text;
             }
+            
+            console.log(`分段翻译: ${sections.length}个章节`);
+            
+            let translatedText = '';
+            for (const section of sections) {
+                const sectionText = section.title + section.content;
+                if (sectionText.length > 1500) {
+                    // 单节太长，只翻译标题
+                    const titleTranslated = await translateText(section.title, 'short', 1);
+                    translatedText += titleTranslated + section.content;
+                } else {
+                    const sectionTranslated = await translateText(sectionText, 'short', 1);
+                    translatedText += sectionTranslated;
+                }
+            }
+            
+            return translatedText;
         }
 
         // 切换语言
