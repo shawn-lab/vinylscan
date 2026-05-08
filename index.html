@@ -3028,7 +3028,20 @@
                             // 检查是否是有效页面（不是消歧义页面等）
                             if (summaryData.extract && summaryData.extract.length > 50 && 
                                 !summaryData.type?.includes('disambiguation')) {
-                                console.log(`✅ 维基百科找到 (${wiki.name}):`, pageTitle);
+                                
+                                // 验证内容是否包含艺术家名（防止同名专辑混淆）
+                                const contentToCheck = (summaryData.extract + ' ' + (summaryData.description || '')).toLowerCase();
+                                const artistLower = artist.toLowerCase();
+                                const artistMatch = contentToCheck.includes(artistLower) || 
+                                                   contentToCheck.includes(artistLower.replace(/-/g, ' '));
+                                
+                                if (!artistMatch && pageTitle === title) {
+                                    // 简单标题格式但内容不匹配艺术家，跳过
+                                    console.log(`⚠️ 维基百科页面内容不匹配艺术家 (${wiki.name}):`, pageTitle);
+                                    continue;
+                                }
+                                
+                                console.log(`✅ 维基百科找到 (${wiki.name}):`, pageTitle, artistMatch ? '(艺术家匹配)' : '(标题格式已包含艺术家)');
                                 
                                 // 获取完整内容
                                 const fullContent = await fetchWikipediaFullContent(wiki.lang, pageTitle);
