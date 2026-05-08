@@ -3110,28 +3110,13 @@
                 // 跳过 "Contents" 等导航标题
                 if (title.includes('Contents') || title.includes('目录') || title === '[edit]') return;
                 
-                // 获取该标题下的所有内容（包括嵌套在 div/section 中的内容）
+                // 获取该标题下的所有内容 - 使用 innerText 获取纯文本
                 let content = '';
                 let currentElement = heading.nextElementSibling;
                 
                 while (currentElement && !['H2', 'H3'].includes(currentElement.tagName)) {
-                    // 递归收集所有文本内容
-                    const collectText = (element) => {
-                        if (element.tagName === 'P' || element.tagName === 'LI') {
-                            return element.textContent + ' ';
-                        }
-                        // 递归处理 div/section 等容器
-                        if (element.children.length > 0) {
-                            let text = '';
-                            for (const child of element.children) {
-                                text += collectText(child);
-                            }
-                            return text;
-                        }
-                        return '';
-                    };
-                    
-                    content += collectText(currentElement);
+                    // 直接使用 innerText 获取所有文本内容
+                    content += currentElement.innerText + ' ';
                     currentElement = currentElement.nextElementSibling;
                 }
                 
