@@ -2901,6 +2901,7 @@
 
             } catch (err) {
                 console.error('加载描述失败:', err);
+                console.error('错误堆栈:', err.stack);
                 // AI兜底生成
                 const fallbackDesc = generateAIDescription(artist, title, year);
                 descEl.textContent = fallbackDesc.short;
@@ -3187,31 +3188,29 @@
                 }
             }
 
-            // 详细描述 - 解析维基百科章节结构
+            // 详细描述 - 使用维基百科内容
             let longDesc = '';
 
-            if (wikiFullContent) {
-                // 解析 HTML 获取章节结构
-                const sections = parseWikiSections(wikiFullContent);
-                
-                if (sections.length > 0) {
-                    // 显示章节标题和摘要（每章前200字）
-                    longDesc = sections.slice(0, 6).map(section => {
-                        const summary = section.content.substring(0, 200) + 
-                            (section.content.length > 200 ? '...' : '');
-                        return `<h4>${section.title}</h4><p>${summary}</p>`;
-                    }).join('');
-                    
-                    // 保存完整章节，标记需要 AI 摘要
-                    window.currentAlbumDesc.wikiSections = sections;
-                    window.currentAlbumDesc.needsAISummary = true;
-                } else {
-                    // 没有解析到章节，显示原始内容
-                    longDesc = '<p>暂无结构化详情</p>';
+            if (wikiExtract) {
+                // 有摘要，直接显示
+                longDesc = `<p>${wikiExtract}</p>`;
+            } else if (wikiFullContent) {
+                // 尝试从 HTML 中提取内容
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(wikiFullContent, 'text/html');
+                    const paragraphs = doc.querySelectorAll('p');
+                    let content = '';
+                    paragraphs.forEach((p, i) => {
+                        if (i < 10) { // 只取前10段
+                            content += `<p>${p.textContent}</p>`;
+                        }
+                    });
+                    longDesc = content || '<p>暂无详细信息</p>';
+                } catch (e) {
+                    console.error('解析 HTML 失败:', e);
+                    longDesc = '<p>暂无详细信息</p>';
                 }
-            } else if (wikiExtract) {
-                longDesc += '<h4>专辑简介</h4>';
-                longDesc += `<p>${wikiExtract}</p>`;
             } else {
                 // 无维基数据，使用 MusicBrainz 信息
                 longDesc += '<h4>发行信息</h4>';
