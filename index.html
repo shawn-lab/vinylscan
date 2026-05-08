@@ -617,6 +617,90 @@
             color: var(--text-muted);
         }
 
+        /* ===== AI SEARCH TAB ===== */
+        .ai-search-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+        }
+
+        .ai-search-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .ai-search-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .ai-search-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            max-width: 300px;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+
+        .ai-search-btn {
+            padding: 10px 24px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+
+        .ai-search-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .ai-search-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .ai-search-result {
+            padding: 16px;
+            line-height: 1.8;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .ai-search-result h4 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 20px 0 8px;
+        }
+
+        .ai-search-result p {
+            margin: 8px 0;
+            color: var(--text-secondary);
+        }
+
+        .ai-search-source {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 4px 10px;
+            background: var(--bg-elevated);
+            border-radius: 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
         .meta-tag {
             display: inline-flex;
             align-items: center;
@@ -1743,6 +1827,7 @@
                 <div class="tab-nav">
                     <button class="tab-btn active" data-tab="tracks" onclick="switchTab('tracks')">曲目</button>
                     <button class="tab-btn" data-tab="details" onclick="switchTab('details')">详情</button>
+                    <button class="tab-btn" data-tab="aisearch" onclick="switchTab('aisearch')">🤖 AI 搜索</button>
                 </div>
 
                 <!-- 曲目标签页 -->
@@ -1760,6 +1845,18 @@
                 <div class="tab-content" id="detailsTab">
                     <div class="details-content" id="detailsContent">
                         <div class="loading-details">正在加载详细信息...</div>
+                    </div>
+                </div>
+
+                <!-- AI 搜索标签页 -->
+                <div class="tab-content" id="aisearchTab">
+                    <div class="ai-search-content" id="aiSearchContent">
+                        <div class="ai-search-placeholder">
+                            <div class="ai-search-icon">🤖</div>
+                            <div class="ai-search-title">AI 联网搜索</div>
+                            <div class="ai-search-desc">使用 Google Gemini 搜索专辑相关信息，补充维基百科未收录的内容</div>
+                            <button class="ai-search-btn" onclick="triggerAISearch()">🔍 开始搜索</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2589,6 +2686,7 @@
         // ===== DISPLAY RESULTS =====
         function displayResult(data) {
             currentResult = data; // 保存当前结果
+            window.currentAlbumData = data; // 保存给 AI 搜索使用
             const section = document.getElementById('resultSection');
             section.classList.add('active');
 
@@ -2670,6 +2768,16 @@
 
             // 重置标签页到曲目
             switchTab('tracks');
+
+            // 重置 AI 搜索标签页
+            document.getElementById('aiSearchContent').innerHTML = `
+                <div class="ai-search-placeholder">
+                    <div class="ai-search-icon">🤖</div>
+                    <div class="ai-search-title">AI 联网搜索</div>
+                    <div class="ai-search-desc">使用 Google Gemini 搜索专辑相关信息，补充维基百科未收录的内容</div>
+                    <button class="ai-search-btn" onclick="triggerAISearch()">🔍 开始搜索</button>
+                </div>
+            `;
 
             // 加载专辑描述
             loadAlbumDescription(data.artist, data.title, data.year);
@@ -3039,33 +3147,14 @@
                 };
 
                 // 添加数据来源提示
-                let sourceLabel, finalShortDesc = shortDesc, finalLongDesc = longDesc;
-                
-                if (wikiData) {
-                    sourceLabel = `（来源：${wikiLang === 'zh' ? '中文' : wikiLang === 'ja' ? '日文' : '英文'}维基百科${wikiFullContent ? '完整内容' : '摘要'}）`;
-                } else {
-                    // 维基百科没有数据，尝试 Gemini 联网搜索
-                    console.log('维基百科无数据，尝试 Gemini 联网搜索...');
-                    descEl.innerHTML = '<span style="color: var(--text-muted);">维基百科暂无数据，正在通过 AI 搜索...</span>';
-                    detailsEl.innerHTML = '<div class="loading-details">正在通过 AI 搜索专辑信息...</div>';
-                    
-                    const geminiResult = await searchAlbumWithGemini(artist, title, year);
-                    if (geminiResult) {
-                        finalShortDesc = geminiResult.short;
-                        finalLongDesc = geminiResult.long;
-                        sourceLabel = `（来源：${geminiResult.source}）`;
-                        console.log('Gemini 搜索成功');
-                    } else {
-                        sourceLabel = '（暂无数据）';
-                    }
-                }
+                const sourceLabel = wikiData ? `（来源：${wikiLang === 'zh' ? '中文' : wikiLang === 'ja' ? '日文' : '英文'}维基百科${wikiFullContent ? '完整内容' : '摘要'}）` : '（暂无维基百科数据，可尝试 AI 搜索标签）';
                 
                 // 如果是英文或日文维基百科，需要翻译
-                if (wikiData && wikiLang !== 'zh' && finalShortDesc.length > 50) {
+                if (wikiData && wikiLang !== 'zh' && shortDesc.length > 50) {
                     // 保存原文（包含 wikiTitle 用于维基百科链接）
                     window.currentAlbumDesc = {
-                        shortOriginal: finalShortDesc,
-                        longOriginal: finalLongDesc,
+                        shortOriginal: shortDesc,
+                        longOriginal: longDesc,
                         shortTranslated: null,
                         longTranslated: null,
                         wikiLang: wikiLang,
@@ -3075,18 +3164,18 @@
                     };
                     
                     // 先显示原文，同时后台翻译简介
-                    detailsEl.innerHTML = finalLongDesc;
+                    detailsEl.innerHTML = longDesc;
                     descEl.innerHTML = '<span style="color: var(--text-muted);">正在翻译简介...</span>';
 
                     // 只翻译简介（300字，快）
-                    const translated = await translateText(finalShortDesc, 'short');
-                    if (translated !== finalShortDesc) {
+                    const translated = await translateText(shortDesc, 'short');
+                    if (translated !== shortDesc) {
                         window.currentAlbumDesc.shortTranslated = translated;
                         window.currentAlbumDesc.isTranslated = true;
                         descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + translated;
                     } else {
                         // 翻译失败，直接显示原文
-                        descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + finalShortDesc;
+                        descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
                         window.currentAlbumDesc.isTranslated = false;
                     }
                     
@@ -3096,9 +3185,9 @@
                         detailsEl.innerHTML += `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);"><a href="${wikiUrl}" target="_blank" style="color: var(--accent); text-decoration: none; font-size: 13px;">📖 在维基百科查看完整内容 →</a></div>`;
                     }
                 } else {
-                    // 中文内容或 Gemini 结果直接显示
-                    descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + finalShortDesc;
-                    detailsEl.innerHTML = finalLongDesc;
+                    // 中文内容直接显示
+                    descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
+                    detailsEl.innerHTML = longDesc;
                     
                     // 添加维基百科链接
                     if (wikiTitle && wikiLang) {
@@ -4244,15 +4333,58 @@ ${content.substring(0, 3000)}
             }
         }
 
-        // 标签页切换（支持曲目/详情）
+        // 触发 AI 搜索（用户点击按钮）
+        async function triggerAISearch() {
+            const container = document.getElementById('aiSearchContent');
+            const artist = window.currentAlbumData?.artist || '';
+            const title = window.currentAlbumData?.title || '';
+            const year = window.currentAlbumData?.year || '';
+
+            if (!artist || !title) {
+                showToast('暂无专辑信息', 'error');
+                return;
+            }
+
+            // 显示加载状态
+            container.innerHTML = `
+                <div class="ai-search-placeholder">
+                    <div class="ai-search-icon" style="animation: pulse 1.5s infinite;">🤖</div>
+                    <div class="ai-search-title">正在搜索...</div>
+                    <div class="ai-search-desc">${artist} - ${title}</div>
+                </div>
+            `;
+
+            const result = await searchAlbumWithGemini(artist, title, year);
+
+            if (result) {
+                container.innerHTML = `
+                    <div class="ai-search-result">
+                        ${result.long.replace(/\n/g, '<br>')}
+                        <div class="ai-search-source">来源：${result.source}</div>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="ai-search-placeholder">
+                        <div class="ai-search-icon">😔</div>
+                        <div class="ai-search-title">搜索失败</div>
+                        <div class="ai-search-desc">无法获取信息，请检查网络连接或稍后重试</div>
+                        <button class="ai-search-btn" onclick="triggerAISearch()">🔄 重试</button>
+                    </div>
+                `;
+            }
+        }
+
+        // 标签页切换（支持曲目/详情/AI搜索）
         function switchTab(tab) {
             // 处理专辑详情页的标签
-            if (tab === 'tracks' || tab === 'details') {
+            if (tab === 'tracks' || tab === 'details' || tab === 'aisearch') {
                 document.querySelectorAll('.tab-nav .tab-btn').forEach(btn => {
                     btn.classList.toggle('active', btn.dataset.tab === tab);
                 });
                 document.getElementById('tracksTab').classList.toggle('active', tab === 'tracks');
                 document.getElementById('detailsTab').classList.toggle('active', tab === 'details');
+                document.getElementById('aisearchTab').classList.toggle('active', tab === 'aisearch');
 
                 // 切换到详情时，懒加载翻译
                 if (tab === 'details' && window.currentAlbumDesc && window.currentAlbumDesc.longNeedsTranslation && !window.currentAlbumDesc.longTranslated) {
