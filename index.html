@@ -3073,6 +3073,52 @@
             throw new Error('百度翻译返回无效数据');
         }
 
+        // 常见维基百科章节标题映射（避免机器翻译错误）
+        const SECTION_TITLE_MAP = {
+            'Background': '背景',
+            'Recording': '录制',
+            'Music and lyrics': '音乐与歌词',
+            'Style and influences': '风格与影响',
+            'Lyrics': '歌词',
+            'Release and promotion': '发行与宣传',
+            'Critical reception': '乐评反响',
+            'Commercial performance': '商业表现',
+            'Track listing': '曲目列表',
+            'Track Listing': '曲目列表',
+            'Personnel': '参与人员',
+            'Musicians': '音乐人',
+            'Credits': '制作人员',
+            'Charts': '榜单成绩',
+            'Singles': '单曲',
+            'Promotion': '宣传',
+            'Artwork': '封面设计',
+            'Composition': '作曲',
+            'Production': '制作',
+            'Concept': '概念',
+            'Reception': '反响',
+            'Accolades': '荣誉',
+            'Legacy': '影响与遗产',
+            'Background and recording': '背景与录制',
+            'Music': '音乐',
+            'Themes': '主题',
+            'Release': '发行',
+            'Critical response': '乐评反响',
+            'Commercial response': '商业反响',
+            'Track list': '曲目列表',
+            'Personnel and credits': '参与人员',
+            'Charts and certifications': '榜单与认证'
+        };
+
+        // 翻译章节标题（优先使用预定义映射）
+        function translateSectionTitle(title) {
+            const trimmed = title.trim();
+            if (SECTION_TITLE_MAP[trimmed]) {
+                return SECTION_TITLE_MAP[trimmed];
+            }
+            // 没有预定义映射的，返回原文
+            return trimmed;
+        }
+
         // 百度翻译长文本（按章节）
         async function translateLongTextBaidu(text, config) {
             const parser = new DOMParser();
@@ -3103,9 +3149,8 @@
             
             let translatedText = '';
             for (const section of sections) {
-                // 翻译标题
-                const titleTranslated = await baiduTranslateRequest(section.title, 'en', 'zh', config);
-                await new Promise(r => setTimeout(r, 200));
+                // 翻译标题（使用预定义映射，不调用 API）
+                const titleTranslated = translateSectionTitle(section.title);
                 
                 // 翻译内容（截取前 1500 字）
                 const contentToTranslate = section.content.substring(0, 1500);
@@ -3218,7 +3263,7 @@
             
             let translatedText = '';
             for (const section of sections) {
-                const titleTranslated = await myMemoryRequest(section.title);
+                const titleTranslated = translateSectionTitle(section.title);
                 await new Promise(r => setTimeout(r, 300));
                 
                 // 翻译内容（截取前 800 字）
