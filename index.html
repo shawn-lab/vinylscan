@@ -2965,6 +2965,12 @@
                 console.log(`内容较长(${text.length}字)，分段翻译`);
                 return await translateLongText(text, zhipuKey);
             }
+            
+            // 详情内容（即使是短的），也使用分段翻译确保完整性
+            if (type === 'long' && text.includes('<h4>')) {
+                console.log(`详情包含章节，使用分段翻译`);
+                return await translateLongText(text, zhipuKey);
+            }
 
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
@@ -3667,16 +3673,24 @@ ${sectionsText}
                 wikiLinkHtml = `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);"><a href="${wikiUrl}" target="_blank" style="color: var(--accent); text-decoration: none; font-size: 13px;">📖 在维基百科查看完整内容 →</a></div>`;
             }
 
+            // 构建最终内容
+            let finalContent = '';
+            
             if (translated !== window.currentAlbumDesc.longOriginal) {
                 window.currentAlbumDesc.longTranslated = translated;
-                detailsEl.innerHTML = translated + wikiLinkHtml;
+                finalContent = translated;
                 // 添加翻译完成提示
-                detailsEl.innerHTML += '<div style="text-align: center; padding: 8px; color: var(--accent); font-size: 12px; margin-top: 16px; border-top: 1px solid var(--border);">✓ 翻译完成</div>';
+                finalContent += '<div style="text-align: center; padding: 8px; color: var(--accent); font-size: 12px; margin-top: 16px; border-top: 1px solid var(--border);">✓ 翻译完成</div>';
             } else {
                 // 翻译失败，显示原文并提示
-                detailsEl.innerHTML = window.currentAlbumDesc.longOriginal + wikiLinkHtml;
-                detailsEl.innerHTML += '<div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 13px; margin-top: 16px; background: var(--bg-card); border-radius: 8px;">⚠️ 翻译服务暂时不可用，已显示原文。您可以点击"原文"按钮重试。</div>';
+                finalContent = window.currentAlbumDesc.longOriginal;
+                finalContent += '<div style="text-align: center; padding: 12px; color: var(--text-muted); font-size: 13px; margin-top: 16px; background: var(--bg-card); border-radius: 8px;">⚠️ 翻译服务暂时不可用，已显示原文。您可以点击"原文"按钮重试。</div>';
             }
+            
+            // 添加维基百科链接
+            finalContent += wikiLinkHtml;
+            
+            detailsEl.innerHTML = finalContent;
         }
 
         // ===== ALBUM SEARCH =====
