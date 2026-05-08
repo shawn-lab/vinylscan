@@ -3001,11 +3001,12 @@
             ];
 
             // 尝试多种可能的页面标题（按优先级排序）
+            // 先尝试最简单的格式，再尝试带后缀的格式
             const possibleTitles = [
+                title,  // 最简单的格式，如 "The New Sound"
                 `${title} (${artist} album)`,
                 `${title} (album)`,
                 `${title} (${artist})`,
-                title,
                 `${artist} ${title}`,
                 `${title} (song)`,  // 有些专辑页面以歌曲名存在
             ];
