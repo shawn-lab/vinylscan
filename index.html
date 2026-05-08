@@ -1952,6 +1952,14 @@
             };
         }
 
+        // Google Gemini API 配置（用于联网搜索专辑信息）
+        function getGeminiConfig() {
+            return {
+                apiKey: 'AIzaSyAt0I2OKJF5d6qKD6Z7RypCkIdWX3n5BxU',
+                model: 'gemini-2.0-flash'
+            };
+        }
+
         // MD5 签名（百度翻译 API 需要）
         async function md5(text) {
             const encoder = new TextEncoder();
@@ -3031,14 +3039,33 @@
                 };
 
                 // 添加数据来源提示
-                const sourceLabel = wikiData ? `（来源：${wikiLang === 'zh' ? '中文' : wikiLang === 'ja' ? '日文' : '英文'}维基百科${wikiFullContent ? '完整内容' : '摘要'}）` : '（暂无维基百科数据）';
+                let sourceLabel, finalShortDesc = shortDesc, finalLongDesc = longDesc;
                 
-                // 如果是英文或日文，需要翻译
-                if (wikiLang !== 'zh' && shortDesc.length > 50) {
+                if (wikiData) {
+                    sourceLabel = `（来源：${wikiLang === 'zh' ? '中文' : wikiLang === 'ja' ? '日文' : '英文'}维基百科${wikiFullContent ? '完整内容' : '摘要'}）`;
+                } else {
+                    // 维基百科没有数据，尝试 Gemini 联网搜索
+                    console.log('维基百科无数据，尝试 Gemini 联网搜索...');
+                    descEl.innerHTML = '<span style="color: var(--text-muted);">维基百科暂无数据，正在通过 AI 搜索...</span>';
+                    detailsEl.innerHTML = '<div class="loading-details">正在通过 AI 搜索专辑信息...</div>';
+                    
+                    const geminiResult = await searchAlbumWithGemini(artist, title, year);
+                    if (geminiResult) {
+                        finalShortDesc = geminiResult.short;
+                        finalLongDesc = geminiResult.long;
+                        sourceLabel = `（来源：${geminiResult.source}）`;
+                        console.log('Gemini 搜索成功');
+                    } else {
+                        sourceLabel = '（暂无数据）';
+                    }
+                }
+                
+                // 如果是英文或日文维基百科，需要翻译
+                if (wikiData && wikiLang !== 'zh' && finalShortDesc.length > 50) {
                     // 保存原文（包含 wikiTitle 用于维基百科链接）
                     window.currentAlbumDesc = {
-                        shortOriginal: shortDesc,
-                        longOriginal: longDesc,
+                        shortOriginal: finalShortDesc,
+                        longOriginal: finalLongDesc,
                         shortTranslated: null,
                         longTranslated: null,
                         wikiLang: wikiLang,
@@ -3048,18 +3075,18 @@
                     };
                     
                     // 先显示原文，同时后台翻译简介
-                    detailsEl.innerHTML = longDesc;
+                    detailsEl.innerHTML = finalLongDesc;
                     descEl.innerHTML = '<span style="color: var(--text-muted);">正在翻译简介...</span>';
 
                     // 只翻译简介（300字，快）
-                    const translated = await translateText(shortDesc, 'short');
-                    if (translated !== shortDesc) {
+                    const translated = await translateText(finalShortDesc, 'short');
+                    if (translated !== finalShortDesc) {
                         window.currentAlbumDesc.shortTranslated = translated;
                         window.currentAlbumDesc.isTranslated = true;
                         descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + translated;
                     } else {
                         // 翻译失败，直接显示原文
-                        descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
+                        descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + finalShortDesc;
                         window.currentAlbumDesc.isTranslated = false;
                     }
                     
@@ -3069,9 +3096,9 @@
                         detailsEl.innerHTML += `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);"><a href="${wikiUrl}" target="_blank" style="color: var(--accent); text-decoration: none; font-size: 13px;">📖 在维基百科查看完整内容 →</a></div>`;
                     }
                 } else {
-                    // 中文内容直接显示
-                    descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
-                    detailsEl.innerHTML = longDesc;
+                    // 中文内容或 Gemini 结果直接显示
+                    descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + finalShortDesc;
+                    detailsEl.innerHTML = finalLongDesc;
                     
                     // 添加维基百科链接
                     if (wikiTitle && wikiLang) {
@@ -4075,6 +4102,69 @@
                 result += sent + '。';
             }
             return result || text.substring(0, maxLength) + '...';
+        }
+
+        // Gemini 联网搜索专辑信息（维基百科兜底）
+        async function searchAlbumWithGemini(artist, title, year) {
+            const config = getGeminiConfig();
+            if (!config.apiKey) return null;
+
+            const prompt = `请搜索专辑"${title}"（艺术家：${artist}${year ? '，发行年份：' + year : ''}）的信息，并用中文回答。
+
+请按以下格式输出：
+
+【简介】
+（2-3句话的专辑简介，包括发行时间、风格、评价等）
+
+【详细信息】
+（更详细的介绍，包括背景、录制、风格、乐评反响等，用HTML格式，标题用<h4>标签，段落用<p>标签）
+
+注意：
+1. 如果搜不到具体信息，请根据艺术家和专辑名合理推测，并标注"以下信息可能不完全准确"
+2. 直接输出内容，不要加"【简介】"等标记
+3. 详细信息部分使用HTML格式`;
+
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }],
+                        tools: [{ "google_search": {} }]
+                    }),
+                    signal: AbortSignal.timeout(30000)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Gemini API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (!text) throw new Error('Gemini 返回空内容');
+
+                // 解析返回内容，分离简介和详细信息
+                const sections = text.split(/【详细信息】|【详细内容】|【详情】/);
+                let shortDesc = (sections[0] || '').replace(/【简介】|【简述】/g, '').trim();
+                let longDesc = sections[1] ? sections[1].trim() : shortDesc;
+
+                // 如果没有明确分段，取前200字作为简介
+                if (!sections[1] && shortDesc.length > 200) {
+                    longDesc = shortDesc;
+                    shortDesc = shortDesc.substring(0, shortDesc.indexOf('。', 150) + 1 || 200);
+                }
+
+                return {
+                    short: shortDesc,
+                    long: longDesc,
+                    source: 'Gemini AI 联网搜索'
+                };
+            } catch (err) {
+                console.warn('Gemini 联网搜索失败:', err.message);
+                return null;
+            }
         }
 
         // AI兜底生成
