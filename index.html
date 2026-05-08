@@ -524,6 +524,28 @@
             color: var(--text-secondary);
         }
 
+        .expand-btn {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 4px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 12px;
+            color: var(--accent);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .expand-btn:hover {
+            background: var(--accent);
+            color: white;
+        }
+
+        .section-full {
+            line-height: 1.7;
+        }
+
         /* 标签页 */
         .tab-nav {
             display: flex;
@@ -2852,7 +2874,7 @@
                 ]);
 
                 // 生成描述
-                const { shortDesc, longDesc, wikiLang, wikiFullContent } = await generateDescription(artist, title, year, wikiData, mbData);
+                const { shortDesc, longDesc, wikiLang, wikiFullContent, wikiTitle } = await generateDescription(artist, title, year, wikiData, mbData);
 
                 // 保存原始内容用于语言切换
                 window.currentAlbumDesc = {
@@ -2861,6 +2883,7 @@
                     shortTranslated: null,
                     longTranslated: null,
                     wikiLang: wikiLang,
+                    wikiTitle: wikiTitle,
                     isTranslated: false
                 };
 
@@ -2895,10 +2918,22 @@
                         descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
                         window.currentAlbumDesc.isTranslated = false;
                     }
+                    
+                    // 添加维基百科链接
+                    if (wikiTitle && wikiLang) {
+                        const wikiUrl = `https://${wikiLang}.wikipedia.org/wiki/${encodeURIComponent(wikiTitle)}`;
+                        detailsEl.innerHTML += `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);"><a href="${wikiUrl}" target="_blank" style="color: var(--accent); text-decoration: none; font-size: 13px;">📖 在维基百科查看完整内容 →</a></div>`;
+                    }
                 } else {
                     // 中文内容直接显示
                     descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
                     detailsEl.innerHTML = longDesc;
+                    
+                    // 添加维基百科链接
+                    if (wikiTitle && wikiLang) {
+                        const wikiUrl = `https://${wikiLang}.wikipedia.org/wiki/${encodeURIComponent(wikiTitle)}`;
+                        detailsEl.innerHTML += `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);"><a href="${wikiUrl}" target="_blank" style="color: var(--accent); text-decoration: none; font-size: 13px;">📖 在维基百科查看完整内容 →</a></div>`;
+                    }
                 }
 
                 // 显示语言切换按钮
@@ -2965,6 +3000,26 @@
         }
 
         // 切换语言
+        // 展开/收起章节
+        function toggleSection(sectionId) {
+            const container = document.getElementById(sectionId);
+            const summary = container.querySelector('.section-summary');
+            const full = container.querySelector('.section-full');
+            const btn = container.querySelector('.expand-btn');
+            
+            if (full.style.display === 'none') {
+                // 展开
+                summary.style.display = 'none';
+                full.style.display = 'block';
+                btn.textContent = '收起';
+            } else {
+                // 收起
+                summary.style.display = 'block';
+                full.style.display = 'none';
+                btn.textContent = '展开完整内容';
+            }
+        }
+
         function toggleDescLang() {
             if (!window.currentAlbumDesc || !window.currentAlbumDesc.isTranslated) return;
 
@@ -3228,6 +3283,8 @@
                         const allElements = Array.from(outputDiv.querySelectorAll('h2, h3, p'));
                         console.log('所有元素数:', allElements.length);
                         
+                        // 保存章节结构（用于展开功能）
+                        const sections = [];
                         let currentTitle = '';
                         let currentContent = '';
                         
@@ -3236,8 +3293,10 @@
                                 // 保存之前的章节
                                 if (currentTitle && currentContent.length > 50) {
                                     if (!['Contents', '目录', 'External links', 'See also', 'References', 'Notes'].some(t => currentTitle.includes(t))) {
-                                        longDesc += `<h4>${currentTitle}</h4>`;
-                                        longDesc += `<p>${currentContent.trim().substring(0, 500)}${currentContent.length > 500 ? '...' : ''}</p>`;
+                                        sections.push({
+                                            title: currentTitle,
+                                            content: currentContent.trim()
+                                        });
                                     }
                                 }
                                 // 开始新章节
@@ -3254,10 +3313,31 @@
                         // 保存最后一个章节
                         if (currentTitle && currentContent.length > 50) {
                             if (!['Contents', '目录', 'External links', 'See also', 'References', 'Notes'].some(t => currentTitle.includes(t))) {
-                                longDesc += `<h4>${currentTitle}</h4>`;
-                                longDesc += `<p>${currentContent.trim().substring(0, 500)}${currentContent.length > 500 ? '...' : ''}</p>`;
+                                sections.push({
+                                    title: currentTitle,
+                                    content: currentContent.trim()
+                                });
                             }
                         }
+                        
+                        // 生成带展开/收起功能的 HTML
+                        sections.forEach((section, index) => {
+                            const summary = section.content.substring(0, 500);
+                            const needExpand = section.content.length > 500;
+                            const sectionId = `section-${index}`;
+                            
+                            longDesc += `<h4>${section.title}</h4>`;
+                            longDesc += `<div class="section-content" id="${sectionId}">`;
+                            longDesc += `<p class="section-summary">${summary}${needExpand ? '...' : ''}</p>`;
+                            if (needExpand) {
+                                longDesc += `<p class="section-full" style="display:none">${section.content}</p>`;
+                                longDesc += `<button class="expand-btn" onclick="toggleSection('${sectionId}')">展开完整内容</button>`;
+                            }
+                            longDesc += `</div>`;
+                        });
+                        
+                        // 保存章节数据供翻译使用
+                        window.currentAlbumDesc.sections = sections;
                         
                         // 如果没有提取到章节，直接显示前几个段落
                         if (longDesc.length === 0 && allParagraphs.length > 0) {
@@ -3298,7 +3378,7 @@
                 longDesc += '<p style="color: var(--text-muted);">暂无更多详细信息。</p>';
             }
 
-            return { shortDesc, longDesc, wikiLang, wikiFullContent };
+            return { shortDesc, longDesc, wikiLang, wikiFullContent, wikiTitle: wikiData?.title };
         }
 
         // 截断文本到指定长度（按句子截断）
