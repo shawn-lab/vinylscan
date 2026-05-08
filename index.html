@@ -3191,10 +3191,50 @@
             // 详细描述 - 使用维基百科内容
             let longDesc = '';
 
-            if (wikiExtract) {
-                // 有摘要，直接显示
+            if (wikiFullContent) {
+                // 优先使用完整 HTML 内容
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(wikiFullContent, 'text/html');
+                    
+                    // 提取信息框（infobox）后的第一段作为专辑概述
+                    const firstPara = doc.querySelector('.mw-parser-output > p, .mw-parser-output > div > p');
+                    if (firstPara) {
+                        longDesc += `<p>${firstPara.textContent}</p>`;
+                    }
+                    
+                    // 提取各个章节
+                    const headings = doc.querySelectorAll('h2, h3');
+                    headings.forEach(heading => {
+                        const title = heading.textContent.trim().replace(/\[edit\]/gi, '');
+                        // 跳过目录和外部链接等章节
+                        if (['Contents', '目录', 'External links', 'See also', 'References'].some(t => title.includes(t))) return;
+                        
+                        // 获取该标题下的内容
+                        let sectionContent = '';
+                        let sibling = heading.nextElementSibling;
+                        while (sibling && !['H2', 'H3'].includes(sibling.tagName)) {
+                            if (sibling.tagName === 'P') {
+                                sectionContent += sibling.textContent + ' ';
+                            }
+                            sibling = sibling.nextElementSibling;
+                        }
+                        
+                        if (sectionContent.trim().length > 50) {
+                            longDesc += `<h4>${title}</h4>`;
+                            longDesc += `<p>${sectionContent.trim().substring(0, 500)}${sectionContent.length > 500 ? '...' : ''}</p>`;
+                        }
+                    });
+                    
+                } catch (e) {
+                    console.error('解析 HTML 失败:', e);
+                    // 降级使用摘要
+                    longDesc = wikiExtract ? `<p>${wikiExtract}</p>` : '<p>暂无详细信息</p>';
+                }
+            } else if (wikiExtract) {
+                // 没有完整内容，使用摘要
                 longDesc = `<p>${wikiExtract}</p>`;
-            } else if (wikiFullContent) {
+            } else {
                 // 尝试从 HTML 中提取内容
                 try {
                     const parser = new DOMParser();
