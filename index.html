@@ -1830,11 +1830,12 @@
                 lastSearchTitle = albumInfo.title;
 
                 if (candidates && candidates.length > 0) {
-                    // 用 AI 的 confidence 判断是否自动选中
-                    if (albumInfo.confidence === 'high') {
+                    const topScore = scoreResult(candidates[0], `${albumInfo.artist || ''} ${albumInfo.title || ''}`.toLowerCase());
+                    // 判断逻辑：匹配度足够高则自动选中
+                    if (topScore >= 4) {
                         await selectCandidate(candidates[0].id, albumInfo.artist, albumInfo.title);
                     } else {
-                        // medium 或 low，显示候选列表让用户选
+                        // 匹配度不够，显示候选列表
                         showCandidates(candidates, albumInfo.artist, albumInfo.title);
                     }
                 } else {
