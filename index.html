@@ -227,62 +227,6 @@
             display: block;
         }
 
-        .crop-frame {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80%;
-            height: 80%;
-            border: 2px solid var(--accent);
-            border-radius: var(--radius-sm);
-            pointer-events: none;
-            z-index: 10;
-            box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
-        }
-
-        .crop-frame::before {
-            content: '识别区域';
-            position: absolute;
-            top: -24px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 11px;
-            color: var(--accent);
-            background: var(--bg-card);
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-
-        .zoom-controls {
-            position: absolute;
-            bottom: 12px;
-            right: 12px;
-            display: flex;
-            gap: 8px;
-            z-index: 20;
-        }
-
-        .zoom-btn {
-            width: 36px;
-            height: 36px;
-            border: none;
-            border-radius: 50%;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(8px);
-            color: white;
-            font-size: 18px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: var(--transition);
-        }
-
-        .zoom-btn:hover {
-            background: var(--accent);
-        }
-
         .clear-preview {
             position: absolute;
             top: 12px;
@@ -1437,13 +1381,8 @@
                 </div>
                 <div class="preview-container" id="previewContainer">
                     <img class="preview-image" id="previewImage" alt="封面预览">
-                    <div class="crop-frame" id="cropFrame"></div>
                 </div>
                 <button class="clear-preview" id="clearBtn" onclick="clearImage(event)">✕</button>
-                <div class="zoom-controls" id="zoomControls" style="display:none">
-                    <button class="zoom-btn" onclick="zoomImage(-0.2)">−</button>
-                    <button class="zoom-btn" onclick="zoomImage(0.2)">+</button>
-                </div>
             </div>
             <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
 
@@ -1689,17 +1628,15 @@
         function showPreview(src) {
             const area = document.getElementById('captureArea');
             const img = document.getElementById('previewImage');
-            const zoomControls = document.getElementById('zoomControls');
             img.src = src;
             area.classList.add('has-image');
-            zoomControls.style.display = 'flex';
 
             // 重置变换
             imageTransform = { x: 0, y: 0, scale: 1 };
             updateImageTransform();
 
-            // 设置拖动事件
-            setupImageDrag();
+            // 设置拖动和缩放事件
+            setupImageGestures();
 
             document.getElementById('scanBtn').disabled = false;
             hideResults();
@@ -1710,19 +1647,26 @@
             img.style.transform = `translate(${imageTransform.x}px, ${imageTransform.y}px) scale(${imageTransform.scale})`;
         }
 
-        function setupImageDrag() {
+        function setupImageGestures() {
             const img = document.getElementById('previewImage');
-            const container = document.getElementById('previewContainer');
 
+            // 单指/鼠标拖动
             img.onmousedown = startDrag;
             img.ontouchstart = startDrag;
             document.onmousemove = onDrag;
             document.ontouchmove = onDrag;
             document.onmouseup = endDrag;
             document.ontouchend = endDrag;
+
+            // 双指缩放
+            img.addEventListener('touchmove', handlePinch, { passive: false });
         }
 
+        let lastTouchDistance = 0;
+
         function startDrag(e) {
+            // 如果是双指触摸，不启动拖动
+            if (e.touches && e.touches.length > 1) return;
             e.preventDefault();
             isDragging = true;
             const point = e.touches ? e.touches[0] : e;
@@ -1731,6 +1675,8 @@
 
         function onDrag(e) {
             if (!isDragging) return;
+            // 如果是双指触摸，不处理拖动
+            if (e.touches && e.touches.length > 1) return;
             e.preventDefault();
             const point = e.touches ? e.touches[0] : e;
             imageTransform.x = point.clientX - dragStart.x;
@@ -1740,11 +1686,26 @@
 
         function endDrag() {
             isDragging = false;
+            lastTouchDistance = 0;
         }
 
-        function zoomImage(delta) {
-            imageTransform.scale = Math.max(0.5, Math.min(3, imageTransform.scale + delta));
-            updateImageTransform();
+        function handlePinch(e) {
+            if (e.touches && e.touches.length === 2) {
+                e.preventDefault();
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                const distance = Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                );
+
+                if (lastTouchDistance > 0) {
+                    const delta = (distance - lastTouchDistance) * 0.005;
+                    imageTransform.scale = Math.max(0.5, Math.min(3, imageTransform.scale + delta));
+                    updateImageTransform();
+                }
+                lastTouchDistance = distance;
+            }
         }
 
         function clearImage(e) {
@@ -1756,7 +1717,6 @@
             updateImageTransform();
             document.getElementById('captureArea').classList.remove('has-image');
             document.getElementById('previewImage').src = '';
-            document.getElementById('zoomControls').style.display = 'none';
             document.getElementById('fileInput').value = '';
             document.getElementById('scanBtn').disabled = true;
             hideResults();
@@ -1833,64 +1793,6 @@
             showPreview(currentImageBase64);
         }
 
-        // ===== CROP IMAGE TO FRAME =====
-        async function cropImageToFrame() {
-            const img = document.getElementById('previewImage');
-            const container = document.getElementById('previewContainer');
-
-            // 创建 canvas
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            // 设置 canvas 尺寸为容器尺寸
-            const containerRect = container.getBoundingClientRect();
-            canvas.width = containerRect.width;
-            canvas.height = containerRect.height;
-
-            // 计算裁剪区域（中间 80% 的区域）
-            const cropX = containerRect.width * 0.1;
-            const cropY = containerRect.height * 0.1;
-            const cropW = containerRect.width * 0.8;
-            const cropH = containerRect.height * 0.8;
-
-            // 获取图片实际尺寸
-            const imgRect = img.getBoundingClientRect();
-            const imgNaturalWidth = img.naturalWidth;
-            const imgNaturalHeight = img.naturalHeight;
-
-            // 计算图片在容器中的显示尺寸（考虑 scale）
-            const displayedWidth = imgRect.width;
-            const displayedHeight = imgRect.height;
-
-            // 计算图片相对于容器的偏移
-            const imgOffsetX = imgRect.left - containerRect.left;
-            const imgOffsetY = imgRect.top - containerRect.top;
-
-            // 计算裁剪区域相对于图片的位置（考虑 scale）
-            const sourceX = (cropX - imgOffsetX) / imageTransform.scale;
-            const sourceY = (cropY - imgOffsetY) / imageTransform.scale;
-            const sourceW = cropW / imageTransform.scale;
-            const sourceH = cropH / imageTransform.scale;
-
-            // 创建临时 canvas 来绘制原始图片
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = imgNaturalWidth;
-            tempCanvas.height = imgNaturalHeight;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(img, 0, 0);
-
-            // 从临时 canvas 裁剪区域
-            ctx.drawImage(
-                tempCanvas,
-                Math.max(0, sourceX), Math.max(0, sourceY),
-                Math.min(sourceW, imgNaturalWidth - Math.max(0, sourceX)),
-                Math.min(sourceH, imgNaturalHeight - Math.max(0, sourceY)),
-                0, 0, cropW, cropH
-            );
-
-            return canvas.toDataURL('image/jpeg', 0.9);
-        }
-
         // ===== SCAN FLOW =====
         async function scanAlbum() {
             if (!currentImageBase64) return;
@@ -1906,13 +1808,9 @@
             hideResults();
 
             try {
-                // Step 1: 裁剪识别框内的图片
-                updateLoading('正在裁剪识别区域...', '准备图片用于 AI 识别');
-                const croppedImageBase64 = await cropImageToFrame();
-
-                // Step 2: AI 识别（使用裁剪后的图片）
+                // AI 识别（直接使用原图）
                 updateLoading('正在识别专辑封面...', 'AI 正在分析图片内容');
-                const albumInfo = await identifyAlbum(croppedImageBase64, zhipuKey);
+                const albumInfo = await identifyAlbum(currentImageBase64, zhipuKey);
 
                 if (!albumInfo) {
                     showError('未识别到专辑', 'AI 未能识别图片中的专辑封面。请尝试上传更清晰、更完整的封面照片。');
