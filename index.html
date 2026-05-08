@@ -3100,8 +3100,8 @@
                 // 翻译标题（使用预定义映射）
                 const titleTranslated = translateSectionTitle(section.title);
                 
-                // 翻译内容（截取前 1500 字）
-                const contentToTranslate = section.content.substring(0, 1500);
+                // 翻译内容（完整内容，分段处理）
+                const contentToTranslate = section.content;
                 const contentChunks = splitText(contentToTranslate, 1700);
                 let contentTranslated = '';
                 for (const chunk of contentChunks) {
@@ -3110,7 +3110,7 @@
                 }
                 
                 translatedText += `<h4>${titleTranslated}</h4>`;
-                translatedText += `<p>${contentTranslated}${section.content.length > 1500 ? '...' : ''}</p>`;
+                translatedText += `<p>${contentTranslated}</p>`;
             }
             
             return translatedText;
@@ -3262,8 +3262,8 @@
                 // 翻译标题（使用预定义映射，不调用 API）
                 const titleTranslated = translateSectionTitle(section.title);
                 
-                // 翻译内容（截取前 1500 字）
-                const contentToTranslate = section.content.substring(0, 1500);
+                // 翻译内容（完整内容，分段处理）
+                const contentToTranslate = section.content;
                 const contentChunks = splitText(contentToTranslate, 1700);
                 let contentTranslated = '';
                 for (const chunk of contentChunks) {
@@ -3272,7 +3272,7 @@
                 }
                 
                 translatedText += `<h4>${titleTranslated}</h4>`;
-                translatedText += `<p>${contentTranslated}${section.content.length > 1500 ? '...' : ''}</p>`;
+                translatedText += `<p>${contentTranslated}</p>`;
             }
             
             return translatedText;
@@ -3376,8 +3376,8 @@
                 const titleTranslated = translateSectionTitle(section.title);
                 await new Promise(r => setTimeout(r, 300));
                 
-                // 翻译内容（截取前 800 字）
-                const contentToTranslate = section.content.substring(0, 800);
+                // 翻译内容（完整内容，分段处理）
+                const contentToTranslate = section.content;
                 const contentChunks = splitText(contentToTranslate, 480);
                 let contentTranslated = '';
                 for (const chunk of contentChunks) {
@@ -3386,7 +3386,7 @@
                 }
                 
                 translatedText += `<h4>${titleTranslated}</h4>`;
-                translatedText += `<p>${contentTranslated}${section.content.length > 800 ? '...' : ''}</p>`;
+                translatedText += `<p>${contentTranslated}</p>`;
             }
             
             return translatedText;
@@ -3504,17 +3504,17 @@
                 const sectionText = section.title + section.content;
                 const sectionLength = sectionText.replace(/<[^>]*>/g, '').length; // 计算纯文本长度
                 
-                if (sectionLength > 1000) {
-                    // 单节太长，分段翻译：先翻译标题，再翻译内容摘要
-                    console.log(`章节较长(${sectionLength}字)，分段翻译`);
-                    const titleTranslated = await translateText(section.title.replace(/<[^>]*>/g, ''), 'short', 1);
-                    const contentText = section.content.replace(/<[^>]*>/g, '').substring(0, 800);
-                    const contentTranslated = await translateText(contentText, 'short', 1);
-                    translatedText += `<h4>${titleTranslated}</h4><p>${contentTranslated}...</p>`;
-                } else {
-                    const sectionTranslated = await translateText(sectionText, 'short', 1);
-                    translatedText += sectionTranslated;
+                // 分段翻译完整内容
+                console.log(`章节翻译: ${sectionLength}字`);
+                const titleTranslated = translateSectionTitle(section.title.replace(/<[^>]*>/g, ''));
+                const contentText = section.content.replace(/<[^>]*>/g, '');
+                const contentChunks = splitText(contentText, 1700);
+                let contentTranslated = '';
+                for (const chunk of contentChunks) {
+                    contentTranslated += await translateText(chunk, 'short', 1);
+                    await new Promise(r => setTimeout(r, 200));
                 }
+                translatedText += `<h4>${titleTranslated}</h4><p>${contentTranslated}</p>`;
             }
             
             return translatedText;
