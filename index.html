@@ -437,6 +437,91 @@
             gap: 8px;
         }
 
+        /* 专辑简介 */
+        .album-description {
+            padding: 16px 20px;
+            background: var(--bg-elevated);
+            border-radius: var(--radius-sm);
+            margin: 0 20px 16px;
+        }
+
+        .description-content {
+            font-size: 14px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+        }
+
+        /* 标签页 */
+        .tab-nav {
+            display: flex;
+            gap: 8px;
+            padding: 0 20px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab-btn {
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-elevated);
+        }
+
+        .tab-btn.active {
+            color: var(--accent);
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .tab-content {
+            display: none;
+            padding: 16px 20px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .details-content {
+            font-size: 14px;
+            line-height: 1.8;
+            color: var(--text-secondary);
+        }
+
+        .details-content h4 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 20px 0 10px;
+        }
+
+        .details-content h4:first-child {
+            margin-top: 0;
+        }
+
+        .details-content ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .details-content li {
+            margin: 6px 0;
+        }
+
+        .loading-details {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
         .meta-tag {
             display: inline-flex;
             align-items: center;
@@ -1425,12 +1510,33 @@
                         <div class="album-meta" id="albumMeta"></div>
                     </div>
                 </div>
-                <div class="tracklist-section">
-                    <div class="tracklist-header">
-                        <span class="tracklist-title">曲目列表</span>
-                        <span class="track-count" id="trackCount"></span>
+                <!-- 专辑简介 -->
+                <div class="album-description" id="albumDescription">
+                    <div class="description-content" id="descriptionContent"></div>
+                </div>
+
+                <!-- 标签页切换 -->
+                <div class="tab-nav">
+                    <button class="tab-btn active" data-tab="tracks" onclick="switchTab('tracks')">曲目</button>
+                    <button class="tab-btn" data-tab="details" onclick="switchTab('details')">详情</button>
+                </div>
+
+                <!-- 曲目标签页 -->
+                <div class="tab-content active" id="tracksTab">
+                    <div class="tracklist-section">
+                        <div class="tracklist-header">
+                            <span class="tracklist-title">曲目列表</span>
+                            <span class="track-count" id="trackCount"></span>
+                        </div>
+                        <ol class="tracklist" id="tracklist"></ol>
                     </div>
-                    <ol class="tracklist" id="tracklist"></ol>
+                </div>
+
+                <!-- 详情标签页 -->
+                <div class="tab-content" id="detailsTab">
+                    <div class="details-content" id="detailsContent">
+                        <div class="loading-details">正在加载详细信息...</div>
+                    </div>
                 </div>
             </div>
             <a class="discogs-link" id="discogsLink" href="#" target="_blank" rel="noopener">
@@ -2294,6 +2400,12 @@
 
             // 收藏按钮状态
             updateFavBtn();
+
+            // 重置标签页到曲目
+            switchTab('tracks');
+
+            // 加载专辑描述
+            loadAlbumDescription(data.artist, data.title, data.year);
         }
 
         function displayFallbackResult(aiData) {
@@ -2626,6 +2738,158 @@
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        // ===== ALBUM DESCRIPTION =====
+        async function loadAlbumDescription(artist, title, year) {
+            const descEl = document.getElementById('descriptionContent');
+            const detailsEl = document.getElementById('detailsContent');
+
+            // 显示加载状态
+            descEl.innerHTML = '<span style="color: var(--text-muted);">正在加载专辑介绍...</span>';
+            detailsEl.innerHTML = '<div class="loading-details">正在加载详细信息...</div>';
+
+            try {
+                // 并行调用维基百科和 MusicBrainz
+                const [wikiData, mbData] = await Promise.all([
+                    fetchWikipediaData(artist, title),
+                    fetchMusicBrainzData(artist, title)
+                ]);
+
+                // 生成描述
+                const { shortDesc, longDesc } = generateDescription(artist, title, year, wikiData, mbData);
+
+                // 显示简介
+                descEl.textContent = shortDesc;
+
+                // 显示详情
+                detailsEl.innerHTML = longDesc;
+
+            } catch (err) {
+                console.error('加载描述失败:', err);
+                // AI兜底生成
+                const fallbackDesc = generateAIDescription(artist, title, year);
+                descEl.textContent = fallbackDesc.short;
+                detailsEl.innerHTML = fallbackDesc.long;
+            }
+        }
+
+        // 维基百科API
+        async function fetchWikipediaData(artist, title) {
+            try {
+                const query = encodeURIComponent(`${title} ${artist} album`);
+                const response = await fetch(`https://zh.wikipedia.org/api/rest_v1/page/summary/${query}`, {
+                    timeout: 5000
+                });
+                if (!response.ok) throw new Error('Wikipedia API failed');
+                return await response.json();
+            } catch (err) {
+                console.warn('Wikipedia fetch failed:', err);
+                return null;
+            }
+        }
+
+        // MusicBrainz API
+        async function fetchMusicBrainzData(artist, title) {
+            try {
+                const query = encodeURIComponent(`release:"${title}" AND artist:"${artist}"`);
+                const response = await fetch(`https://musicbrainz.org/ws/2/release/?query=${query}&fmt=json`, {
+                    headers: { 'User-Agent': 'VinylScan/1.0 (vinylscan@example.com)' },
+                    timeout: 5000
+                });
+                if (!response.ok) throw new Error('MusicBrainz API failed');
+                const data = await response.json();
+                return data.releases && data.releases[0] ? data.releases[0] : null;
+            } catch (err) {
+                console.warn('MusicBrainz fetch failed:', err);
+                return null;
+            }
+        }
+
+        // 生成描述
+        function generateDescription(artist, title, year, wikiData, mbData) {
+            // 提取信息
+            const wikiExtract = wikiData && wikiData.extract ? wikiData.extract : '';
+            const wikiTitle = wikiData && wikiData.title ? wikiData.title : '';
+
+            // 简短描述（约300字）- 宏观视角
+            let shortDesc = `${artist}于${year || '某年'}发行的《${title}》`;
+
+            if (wikiExtract) {
+                // 使用维基百科内容，截取前300字左右
+                const sentences = wikiExtract.split(/[。！？.!?]/).filter(s => s.trim());
+                let summary = '';
+                for (const sent of sentences) {
+                    if (summary.length + sent.length > 280) break;
+                    summary += sent + '。';
+                }
+                if (summary) {
+                    shortDesc = summary;
+                }
+            }
+
+            // 详细描述 - 微观视角
+            let longDesc = '';
+
+            // 录制背景
+            longDesc += '<h4>录制背景</h4>';
+            if (mbData && mbData.date) {
+                longDesc += `<p>专辑于${mbData.date.substring(0, 4)}年发行`;
+                if (mbData['label-info'] && mbData['label-info'][0]) {
+                    longDesc += `，由${mbData['label-info'][0].label.name}发行`;
+                }
+                longDesc += '。</p>';
+            } else {
+                longDesc += `<p>${artist}在${year || '这一时期'}录制并发行了这张专辑。</p>`;
+            }
+
+            // 专辑简介
+            if (wikiExtract) {
+                longDesc += '<h4>专辑简介</h4>';
+                longDesc += `<p>${wikiExtract.substring(0, 500)}...</p>`;
+            }
+
+            // 更多信息提示
+            longDesc += '<h4>更多信息</h4>';
+            longDesc += '<p>关于这张专辑的更多录制细节、曲目解析和文化影响，建议查看维基百科或专业音乐网站获取完整资料。</p>';
+
+            return { shortDesc, longDesc };
+        }
+
+        // AI兜底生成
+        function generateAIDescription(artist, title, year) {
+            const short = `${artist}于${year || '某年'}发行的专辑《${title}》，展现了艺术家在这一时期的音乐探索与创作风格。这张专辑融合了多种音乐元素，体现了独特的艺术视角。`;
+
+            const long = `
+                <h4>专辑背景</h4>
+                <p>${artist}在${year || '这一时期'}带来了专辑《${title}》。这张作品记录了艺术家的创作历程。</p>
+                <h4>音乐风格</h4>
+                <p>专辑展现了${artist}独特的音乐审美和艺术追求。</p>
+                <h4>更多信息</h4>
+                <p>建议通过维基百科或Discogs等平台获取更多关于这张专辑的详细信息。</p>
+            `;
+
+            return { short, long };
+        }
+
+        // 标签页切换（支持曲目/详情）
+        function switchTab(tab) {
+            // 处理专辑详情页的标签
+            if (tab === 'tracks' || tab === 'details') {
+                document.querySelectorAll('.tab-nav .tab-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.tab === tab);
+                });
+                document.getElementById('tracksTab').classList.toggle('active', tab === 'tracks');
+                document.getElementById('detailsTab').classList.toggle('active', tab === 'details');
+                return;
+            }
+
+            // 处理历史/收藏标签（原有逻辑）
+            document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+                btn.classList.toggle('active', (tab === 'history' && i === 0) || (tab === 'favorites' && i === 1));
+            });
+            document.getElementById('historyTab').classList.toggle('active', tab === 'history');
+            document.getElementById('favoritesTab').classList.toggle('active', tab === 'favorites');
         }
     </script>
 </body>
