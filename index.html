@@ -2852,7 +2852,7 @@
                 ]);
 
                 // 生成描述
-                const { shortDesc, longDesc, wikiLang, wikiFullContent } = generateDescription(artist, title, year, wikiData, mbData);
+                const { shortDesc, longDesc, wikiLang, wikiFullContent } = await generateDescription(artist, title, year, wikiData, mbData);
 
                 // 保存原始内容用于语言切换
                 window.currentAlbumDesc = {
@@ -3114,7 +3114,7 @@
         }
 
         // 生成描述 - 使用完整内容
-        function generateDescription(artist, title, year, wikiData, mbData) {
+        async function generateDescription(artist, title, year, wikiData, mbData) {
             // 提取信息
             const wikiExtract = wikiData && wikiData.extract ? wikiData.extract : '';
             const wikiFullContent = wikiData && wikiData.fullContent ? wikiData.fullContent : '';
