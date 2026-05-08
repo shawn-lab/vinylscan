@@ -2892,13 +2892,14 @@
                 
                 // 如果是英文或日文，需要翻译
                 if (wikiLang !== 'zh' && shortDesc.length > 50) {
-                    // 保存原文
+                    // 保存原文（包含 wikiTitle 用于维基百科链接）
                     window.currentAlbumDesc = {
                         shortOriginal: shortDesc,
                         longOriginal: longDesc,
                         shortTranslated: null,
                         longTranslated: null,
                         wikiLang: wikiLang,
+                        wikiTitle: wikiTitle,
                         isTranslated: false,
                         longNeedsTranslation: true
                     };
