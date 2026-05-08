@@ -2059,29 +2059,6 @@
             }
         }
 
-            // 解析 JSON
-            try {
-                const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-                const result = JSON.parse(cleaned);
-
-                if (result.error) {
-                    if (result.error === 'not_an_album_cover') {
-                        showError('不是专辑封面', '图片中未检测到专辑封面。请上传黑胶唱片或CD的封面照片。');
-                        return null;
-                    }
-                    if (result.error === 'unrecognized') {
-                        showError('无法识别', 'AI 无法识别这张专辑封面。请尝试上传更清晰的照片。');
-                        return null;
-                    }
-                }
-
-                return result;
-            } catch (parseErr) {
-                console.error('JSON parse error:', parseErr, 'Content:', content);
-                throw new Error('AI 返回的数据格式异常，请重试');
-            }
-        }
-
         // ===== DISCOGS API =====
         async function searchDiscogs(artist, title) {
             const token = getDiscogsToken();
