@@ -135,7 +135,7 @@
             position: relative;
             width: 100%;
             aspect-ratio: 1 / 1;
-            max-height: 400px;
+            max-height: 320px;
             border: 2px dashed var(--border);
             border-radius: var(--radius);
             background: var(--bg-secondary);
@@ -2806,6 +2806,7 @@
 
         function resetApp() {
             clearImage(new Event('click'));
+            showCaptureSection();
         }
 
         function showToast(message, type = '') {
@@ -3179,6 +3180,10 @@ ${longText}
                 return;
             }
 
+            // 搜索时隐藏扫描框
+            const captureSection = document.querySelector('.capture-section');
+            captureSection.style.display = 'none';
+
             showLoading();
             hideResults();
             updateLoading('正在搜索...', `搜索: ${query}`);
@@ -3197,13 +3202,22 @@ ${longText}
                     showToast(`找到 ${candidates.length} 个结果`, 'success');
                 } else {
                     showToast('未找到匹配的专辑', 'error');
+                    // 没有结果时恢复扫描框
+                    captureSection.style.display = '';
                 }
             } catch (err) {
                 console.error('搜索失败:', err);
                 showToast('搜索失败: ' + err.message, 'error');
+                // 出错时恢复扫描框
+                captureSection.style.display = '';
             } finally {
                 hideLoading();
             }
+        }
+
+        // 恢复扫描框显示
+        function showCaptureSection() {
+            document.querySelector('.capture-section').style.display = '';
         }
     </script>
 </body>
