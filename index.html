@@ -1815,6 +1815,22 @@
             return localStorage.getItem('vinylscan_zhipu_key') || '';
         }
 
+        // 百度翻译配置
+        function getBaiduTranslateConfig() {
+            return {
+                appid: '20260508002609579',
+                key: '9otVIKQUGciLhf2COObz'
+            };
+        }
+
+        // MD5 签名（百度翻译 API 需要）
+        async function md5(text) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(text);
+            const hash = await crypto.subtle.digest('MD5', data);
+            return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
         function getDiscogsToken() {
             return localStorage.getItem('vinylscan_discogs_token') || '';
         }
@@ -2951,9 +2967,19 @@
             }
         }
 
-        // 翻译文本（MyMemory API 为主，智谱 AI 为备用）
+        // 翻译文本（百度翻译 > MyMemory > 智谱 AI）
         async function translateText(text, type, maxRetries = 2) {
-            // 先尝试 MyMemory API（免费、稳定、支持 CORS）
+            // 1. 先尝试百度翻译（稳定、额度大）
+            try {
+                const translated = await translateWithBaidu(text, type);
+                if (translated && translated !== text) {
+                    return translated;
+                }
+            } catch (err) {
+                console.warn('百度翻译失败:', err.message);
+            }
+            
+            // 2. 百度失败，尝试 MyMemory
             try {
                 const translated = await translateWithMyMemory(text, type);
                 if (translated && translated !== text) {
@@ -2963,7 +2989,7 @@
                 console.warn('MyMemory 翻译失败:', err.message);
             }
             
-            // MyMemory 失败，尝试智谱 AI
+            // 3. 都失败，尝试智谱 AI
             const zhipuKey = getZhipuKey();
             if (zhipuKey) {
                 try {
@@ -2979,6 +3005,122 @@
             // 都失败了，返回原文
             console.warn('所有翻译服务均失败，返回原文');
             return text;
+        }
+
+        // 百度翻译（通过 CORS 代理）
+        async function translateWithBaidu(text, type) {
+            const config = getBaiduTranslateConfig();
+            const label = type === 'short' ? '简短介绍' : '详细介绍';
+            console.log(`使用百度翻译${label}，原文长度: ${text.length}`);
+            
+            // 如果是详情内容（含 HTML），按章节翻译
+            if (type === 'long' && text.includes('<h4>')) {
+                return await translateLongTextBaidu(text, config);
+            }
+            
+            // 简介或纯文本：直接翻译
+            // 百度翻译单次限制 2000 字符
+            if (text.length <= 1800) {
+                const result = await baiduTranslateRequest(text, 'en', 'zh', config);
+                return result;
+            }
+            
+            // 长文本：分段翻译
+            const chunks = splitText(text, 1700);
+            let translated = '';
+            for (const chunk of chunks) {
+                const result = await baiduTranslateRequest(chunk, 'en', 'zh', config);
+                translated += result;
+                await new Promise(r => setTimeout(r, 200));
+            }
+            return translated;
+        }
+
+        // 百度翻译 API 请求（通过 CORS 代理）
+        async function baiduTranslateRequest(query, from, to, config) {
+            const salt = Date.now().toString();
+            const signStr = config.appid + query + salt + config.key;
+            const sign = await md5(signStr);
+            
+            const params = new URLSearchParams({
+                q: query,
+                from: from,
+                to: to,
+                appid: config.appid,
+                salt: salt,
+                sign: sign
+            });
+            
+            // 使用 CORS 代理
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(`https://fanyi-api.baidu.com/api/trans/vip/translate?${params.toString()}`)}`;
+            
+            const response = await fetch(proxyUrl, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) throw new Error(`百度翻译 API error: ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (data.error_code) {
+                throw new Error(`百度翻译错误: ${data.error_code} ${data.error_msg || ''}`);
+            }
+            
+            if (data.trans_result && data.trans_result.length > 0) {
+                return data.trans_result.map(r => r.dst).join('');
+            }
+            
+            throw new Error('百度翻译返回无效数据');
+        }
+
+        // 百度翻译长文本（按章节）
+        async function translateLongTextBaidu(text, config) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            const sections = [];
+            
+            const headings = doc.querySelectorAll('h4');
+            headings.forEach(heading => {
+                const titleText = heading.textContent;
+                let content = '';
+                let sibling = heading.nextElementSibling;
+                while (sibling && sibling.tagName !== 'H4') {
+                    content += sibling.textContent + ' ';
+                    sibling = sibling.nextElementSibling;
+                }
+                if (content.trim()) {
+                    sections.push({ title: titleText, content: content.trim() });
+                }
+            });
+            
+            if (sections.length === 0) {
+                const plainText = text.replace(/<[^>]*>/g, '');
+                const translated = await translateWithBaidu(plainText, 'short');
+                return `<p>${translated}</p>`;
+            }
+            
+            console.log(`百度翻译分段: ${sections.length}个章节`);
+            
+            let translatedText = '';
+            for (const section of sections) {
+                // 翻译标题
+                const titleTranslated = await baiduTranslateRequest(section.title, 'en', 'zh', config);
+                await new Promise(r => setTimeout(r, 200));
+                
+                // 翻译内容（截取前 1500 字）
+                const contentToTranslate = section.content.substring(0, 1500);
+                const contentChunks = splitText(contentToTranslate, 1700);
+                let contentTranslated = '';
+                for (const chunk of contentChunks) {
+                    contentTranslated += await baiduTranslateRequest(chunk, 'en', 'zh', config);
+                    await new Promise(r => setTimeout(r, 200));
+                }
+                
+                translatedText += `<h4>${titleTranslated}</h4>`;
+                translatedText += `<p>${contentTranslated}${section.content.length > 1500 ? '...' : ''}</p>`;
+            }
+            
+            return translatedText;
         }
 
         // MyMemory 翻译（免费、稳定、支持 CORS）
