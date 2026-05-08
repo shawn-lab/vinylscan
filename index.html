@@ -3336,9 +3336,6 @@
                             longDesc += `</div>`;
                         });
                         
-                        // 保存章节数据供翻译使用
-                        window.currentAlbumDesc.sections = sections;
-                        
                         // 如果没有提取到章节，直接显示前几个段落
                         if (longDesc.length === 0 && allParagraphs.length > 0) {
                             console.log('没有提取到章节，使用段落');
