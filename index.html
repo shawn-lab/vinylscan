@@ -3100,14 +3100,13 @@
                 // 翻译标题（使用预定义映射）
                 const titleTranslated = translateSectionTitle(section.title);
                 
-                // 翻译内容（完整内容，分段处理）
+                // 翻译内容（完整内容，并行分段翻译）
                 const contentToTranslate = section.content;
                 const contentChunks = splitText(contentToTranslate, 1700);
-                let contentTranslated = '';
-                for (const chunk of contentChunks) {
-                    contentTranslated += await vercelProxyRequest(chunk, 'en', 'zh', proxyUrl);
-                    await new Promise(r => setTimeout(r, 200));
-                }
+                const translatedChunks = await Promise.all(
+                    contentChunks.map(chunk => vercelProxyRequest(chunk, 'en', 'zh', proxyUrl))
+                );
+                const contentTranslated = translatedChunks.join('');
                 
                 translatedText += `<h4>${titleTranslated}</h4>`;
                 translatedText += `<p>${contentTranslated}</p>`;
@@ -3262,14 +3261,13 @@
                 // 翻译标题（使用预定义映射，不调用 API）
                 const titleTranslated = translateSectionTitle(section.title);
                 
-                // 翻译内容（完整内容，分段处理）
+                // 翻译内容（完整内容，并行分段翻译）
                 const contentToTranslate = section.content;
                 const contentChunks = splitText(contentToTranslate, 1700);
-                let contentTranslated = '';
-                for (const chunk of contentChunks) {
-                    contentTranslated += await baiduTranslateRequest(chunk, 'en', 'zh', config);
-                    await new Promise(r => setTimeout(r, 200));
-                }
+                const translatedChunks = await Promise.all(
+                    contentChunks.map(chunk => baiduTranslateRequest(chunk, 'en', 'zh', config))
+                );
+                const contentTranslated = translatedChunks.join('');
                 
                 translatedText += `<h4>${titleTranslated}</h4>`;
                 translatedText += `<p>${contentTranslated}</p>`;
@@ -3376,14 +3374,13 @@
                 const titleTranslated = translateSectionTitle(section.title);
                 await new Promise(r => setTimeout(r, 300));
                 
-                // 翻译内容（完整内容，分段处理）
+                // 翻译内容（完整内容，并行分段翻译）
                 const contentToTranslate = section.content;
                 const contentChunks = splitText(contentToTranslate, 480);
-                let contentTranslated = '';
-                for (const chunk of contentChunks) {
-                    contentTranslated += await myMemoryRequest(chunk);
-                    await new Promise(r => setTimeout(r, 300));
-                }
+                const translatedChunks = await Promise.all(
+                    contentChunks.map(chunk => myMemoryRequest(chunk))
+                );
+                const contentTranslated = translatedChunks.join('');
                 
                 translatedText += `<h4>${titleTranslated}</h4>`;
                 translatedText += `<p>${contentTranslated}</p>`;
@@ -3509,11 +3506,10 @@
                 const titleTranslated = translateSectionTitle(section.title.replace(/<[^>]*>/g, ''));
                 const contentText = section.content.replace(/<[^>]*>/g, '');
                 const contentChunks = splitText(contentText, 1700);
-                let contentTranslated = '';
-                for (const chunk of contentChunks) {
-                    contentTranslated += await translateText(chunk, 'short', 1);
-                    await new Promise(r => setTimeout(r, 200));
-                }
+                const translatedChunks = await Promise.all(
+                    contentChunks.map(chunk => translateText(chunk, 'short', 1))
+                );
+                const contentTranslated = translatedChunks.join('');
                 translatedText += `<h4>${titleTranslated}</h4><p>${contentTranslated}</p>`;
             }
             
