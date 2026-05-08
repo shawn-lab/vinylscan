@@ -3574,28 +3574,29 @@
             }
         }
 
-        // 维基百科API - 搜索优先 + 多语言尝试
+        // 维基百科API - 搜索优先 + 英文优先
         async function fetchWikipediaData(artist, title) {
-            // 语言优先级：英文→日文→中文
+            // 语言优先级：英文→日文→中文（每种语言完整尝试后再试下一种）
             const wikis = [
                 { lang: 'en', name: '英文' },
                 { lang: 'ja', name: '日文' },
                 { lang: 'zh', name: '中文' }
             ];
 
-            // ===== 第一步：快速尝试最简标题（只试 1 种格式） =====
             for (const wiki of wikis) {
+                console.log(`--- 尝试 ${wiki.name} 维基百科 ---`);
+                
+                // ===== 第一步：快速尝试最简标题 =====
                 try {
                     const query = encodeURIComponent(title);
                     const summaryUrl = `https://${wiki.lang}.wikipedia.org/api/rest_v1/page/summary/${query}`;
-                    console.log(`快速尝试 ${wiki.name} 维基百科:`, title);
+                    console.log(`快速尝试:`, title);
                     
                     const summaryResp = await fetch(summaryUrl);
                     if (summaryResp.ok) {
                         const summaryData = await summaryResp.json();
                         if (summaryData.extract && summaryData.extract.length > 50 && 
                             !summaryData.type?.includes('disambiguation')) {
-                            // 验证内容是否包含艺术家名
                             const contentToCheck = (summaryData.extract + ' ' + (summaryData.description || '')).toLowerCase();
                             const artistLower = artist.toLowerCase();
                             if (contentToCheck.includes(artistLower) || contentToCheck.includes(artistLower.replace(/-/g, ' '))) {
@@ -3606,48 +3607,42 @@
                         }
                     }
                 } catch (err) {
-                    // 忽略，继续下一步
+                    // 忽略
                 }
-            }
 
-            // ===== 第二步：用搜索 API 模糊查找（主力方案） =====
-            console.log('使用搜索 API 查找:', title, artist);
-            
-            for (const wiki of wikis) {
+                // ===== 第二步：搜索 API（专辑名 + 艺术家名） =====
                 try {
-                    // 搜索关键词：专辑名 + 艺术家名
                     const searchQuery = `${title} ${artist}`;
                     const searchUrl = `https://${wiki.lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(searchQuery)}&srnamespace=0&srlimit=5&format=json&origin=*`;
+                    console.log(`搜索 API:`, searchQuery);
                     const searchResp = await fetch(searchUrl);
                     
-                    if (!searchResp.ok) continue;
-                    const searchData = await searchResp.json();
-                    if (!searchData.query?.search) continue;
-                    
-                    const artistLower = artist.toLowerCase();
-                    const titleLower = title.toLowerCase();
-                    
-                    for (const result of searchData.query.search) {
-                        const pageTitle = result.title;
-                        const snippet = (result.snippet || '').toLowerCase();
-                        
-                        // 验证：搜索结果必须包含艺术家名或专辑名
-                        const artistMatch = snippet.includes(artistLower) || 
-                                          snippet.includes(artistLower.replace(/-/g, ' '));
-                        const titleMatch = pageTitle.toLowerCase().includes(titleLower);
-                        
-                        if (artistMatch || titleMatch) {
-                            console.log(`✅ 搜索 API 找到 (${wiki.name}):`, pageTitle);
+                    if (searchResp.ok) {
+                        const searchData = await searchResp.json();
+                        if (searchData.query?.search) {
+                            const artistLower = artist.toLowerCase();
+                            const titleLower = title.toLowerCase();
                             
-                            // 获取页面摘要
-                            const summaryUrl = `https://${wiki.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
-                            const summaryResp = await fetch(summaryUrl);
-                            if (summaryResp.ok) {
-                                const summaryData = await summaryResp.json();
-                                if (summaryData.extract && summaryData.extract.length > 50 &&
-                                    !summaryData.type?.includes('disambiguation')) {
-                                    const fullContent = await fetchWikipediaFullContent(wiki.lang, pageTitle);
-                                    return { ...summaryData, fullContent, lang: wiki.lang };
+                            for (const result of searchData.query.search) {
+                                const pageTitle = result.title;
+                                const snippet = (result.snippet || '').toLowerCase();
+                                
+                                const artistMatch = snippet.includes(artistLower) || 
+                                                  snippet.includes(artistLower.replace(/-/g, ' '));
+                                const titleMatch = pageTitle.toLowerCase().includes(titleLower);
+                                
+                                if (artistMatch || titleMatch) {
+                                    console.log(`✅ 搜索 API 找到 (${wiki.name}):`, pageTitle);
+                                    const summaryUrl = `https://${wiki.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
+                                    const summaryResp = await fetch(summaryUrl);
+                                    if (summaryResp.ok) {
+                                        const summaryData = await summaryResp.json();
+                                        if (summaryData.extract && summaryData.extract.length > 50 &&
+                                            !summaryData.type?.includes('disambiguation')) {
+                                            const fullContent = await fetchWikipediaFullContent(wiki.lang, pageTitle);
+                                            return { ...summaryData, fullContent, lang: wiki.lang };
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -3655,33 +3650,30 @@
                 } catch (err) {
                     console.warn(`搜索 API 失败 (${wiki.name}):`, err.message);
                 }
-            }
 
-            // ===== 第三步：只搜专辑名（不带艺术家，用于找不到的情况） =====
-            console.log('尝试只搜索专辑名:', title);
-            for (const wiki of wikis) {
+                // ===== 第三步：只搜专辑名 =====
                 try {
                     const searchUrl = `https://${wiki.lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(title)}&srnamespace=0&srlimit=3&format=json&origin=*`;
+                    console.log(`仅标题搜索:`, title);
                     const searchResp = await fetch(searchUrl);
-                    if (!searchResp.ok) continue;
-                    const searchData = await searchResp.json();
-                    if (!searchData.query?.search) continue;
-                    
-                    const titleLower = title.toLowerCase();
-                    
-                    for (const result of searchData.query.search) {
-                        const pageTitle = result.title;
-                        // 只检查标题是否包含专辑名
-                        if (pageTitle.toLowerCase().includes(titleLower)) {
-                            console.log(`✅ 仅标题搜索找到 (${wiki.name}):`, pageTitle);
-                            const summaryUrl = `https://${wiki.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
-                            const summaryResp = await fetch(summaryUrl);
-                            if (summaryResp.ok) {
-                                const summaryData = await summaryResp.json();
-                                if (summaryData.extract && summaryData.extract.length > 50 &&
-                                    !summaryData.type?.includes('disambiguation')) {
-                                    const fullContent = await fetchWikipediaFullContent(wiki.lang, pageTitle);
-                                    return { ...summaryData, fullContent, lang: wiki.lang };
+                    if (searchResp.ok) {
+                        const searchData = await searchResp.json();
+                        if (searchData.query?.search) {
+                            const titleLower = title.toLowerCase();
+                            for (const result of searchData.query.search) {
+                                const pageTitle = result.title;
+                                if (pageTitle.toLowerCase().includes(titleLower)) {
+                                    console.log(`✅ 仅标题搜索找到 (${wiki.name}):`, pageTitle);
+                                    const summaryUrl = `https://${wiki.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
+                                    const summaryResp = await fetch(summaryUrl);
+                                    if (summaryResp.ok) {
+                                        const summaryData = await summaryResp.json();
+                                        if (summaryData.extract && summaryData.extract.length > 50 &&
+                                            !summaryData.type?.includes('disambiguation')) {
+                                            const fullContent = await fetchWikipediaFullContent(wiki.lang, pageTitle);
+                                            return { ...summaryData, fullContent, lang: wiki.lang };
+                                        }
+                                    }
                                 }
                             }
                         }
