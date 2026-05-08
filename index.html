@@ -2869,11 +2869,20 @@
                 
                 // 如果是英文或日文，需要翻译
                 if (wikiLang !== 'zh' && shortDesc.length > 50) {
+                    // 保存原文
+                    window.currentAlbumDesc = {
+                        shortOriginal: shortDesc,
+                        longOriginal: longDesc,
+                        shortTranslated: null,
+                        longTranslated: null,
+                        wikiLang: wikiLang,
+                        isTranslated: false,
+                        longNeedsTranslation: true
+                    };
+                    
                     // 先显示原文，同时后台翻译简介
-                    descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
                     detailsEl.innerHTML = longDesc;
-                    descEl.innerHTML = '<span style="color: var(--text-muted);">正在翻译简介...</span>' + 
-                        '<div style="margin-top:8px;font-size:13px;color:var(--text-muted);opacity:0.7">' + shortDesc.substring(0, 100) + '...</div>';
+                    descEl.innerHTML = '<span style="color: var(--text-muted);">正在翻译简介...</span>';
 
                     // 只翻译简介（300字，快）
                     const translated = await translateText(shortDesc, 'short');
@@ -2886,10 +2895,6 @@
                         descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
                         window.currentAlbumDesc.isTranslated = false;
                     }
-
-                    // 详情标记为未翻译，用户点击时再翻译
-                    window.currentAlbumDesc.longTranslated = null;
-                    window.currentAlbumDesc.longNeedsTranslation = (wikiLang !== 'zh');
                 } else {
                     // 中文内容直接显示
                     descEl.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">' + sourceLabel + '</span><br><br>' + shortDesc;
@@ -2922,6 +2927,11 @@
                 const label = type === 'short' ? '简短介绍' : '详细介绍';
                 console.log(`开始翻译${label}，原文长度: ${text.length}`);
                 
+                // 针对详情内容，保留 HTML 标签
+                const prompt = type === 'long' 
+                    ? `请将以下专辑详细介绍翻译成中文。内容包含 HTML 标签（如 <h4>、<p>），请保留这些标签，只翻译标签内的文字内容。只返回翻译结果，不要添加任何解释：\n\n${text}`
+                    : `请将以下专辑${label}翻译成中文，只返回翻译结果，不要添加任何解释或额外内容：\n\n${text}`;
+                
                 const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -2932,7 +2942,7 @@
                         model: 'glm-4-flash',
                         messages: [{
                             role: 'user',
-                            content: `请将以下专辑${label}翻译成中文，只返回翻译结果，不要添加任何解释或额外内容：\n\n${text}`
+                            content: prompt
                         }],
                         temperature: 0.3
                     })
@@ -3392,9 +3402,9 @@ ${content.substring(0, 3000)}
                 document.getElementById('tracksTab').classList.toggle('active', tab === 'tracks');
                 document.getElementById('detailsTab').classList.toggle('active', tab === 'details');
 
-                // 切换到详情时，懒加载 AI 摘要
-                if (tab === 'details' && window.currentAlbumDesc && window.currentAlbumDesc.needsAISummary) {
-                    generateAISummary();
+                // 切换到详情时，懒加载翻译
+                if (tab === 'details' && window.currentAlbumDesc && window.currentAlbumDesc.longNeedsTranslation && !window.currentAlbumDesc.longTranslated) {
+                    translateDetailsOnDemand();
                 }
                 return;
             }
