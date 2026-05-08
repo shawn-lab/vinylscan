@@ -2767,7 +2767,8 @@
             switchTab('tracks');
 
             // 重置 AI 搜索标签页
-            document.getElementById('aiSearchContent').innerHTML = `
+            const aiTab = document.getElementById('aiSearchContent');
+            aiTab.innerHTML = `
                 <div class="ai-search-placeholder">
                     <div class="ai-search-icon">🤖</div>
                     <div class="ai-search-title">AI 联网搜索</div>
@@ -2775,6 +2776,8 @@
                     <button class="ai-search-btn" onclick="triggerAISearch()">🔍 开始搜索</button>
                 </div>
             `;
+            aiTab.dataset.searching = '';
+            aiTab.dataset.searched = '';
 
             // 加载专辑描述
             loadAlbumDescription(data.artist, data.title, data.year);
