@@ -2857,18 +2857,27 @@
 
                 // 如果是英文或日文，需要翻译
                 if (wikiLang !== 'zh' && shortDesc.length > 50) {
-                    // 显示翻译中状态
-                    descEl.innerHTML = '<span style="color: var(--text-muted);">正在翻译...</span>';
-                    
-                    // 翻译
-                    const translated = await translateDescription(shortDesc, longDesc);
-                    window.currentAlbumDesc.shortTranslated = translated.short;
-                    window.currentAlbumDesc.longTranslated = translated.long;
-                    window.currentAlbumDesc.isTranslated = true;
+                    // 先显示原文，同时后台翻译简介
+                    descEl.textContent = shortDesc;
+                    detailsEl.innerHTML = longDesc;
+                    descEl.innerHTML = '<span style="color: var(--text-muted);">正在翻译简介...</span>' + 
+                        '<div style="margin-top:8px;font-size:13px;color:var(--text-muted);opacity:0.7">' + shortDesc.substring(0, 100) + '...</div>';
 
-                    // 显示翻译后的内容
-                    descEl.textContent = translated.short;
-                    detailsEl.innerHTML = translated.long;
+                    // 只翻译简介（300字，快）
+                    const translated = await translateText(shortDesc, 'short');
+                    if (translated !== shortDesc) {
+                        window.currentAlbumDesc.shortTranslated = translated;
+                        window.currentAlbumDesc.isTranslated = true;
+                        descEl.textContent = translated;
+                    } else {
+                        // 翻译失败，直接显示原文
+                        descEl.textContent = shortDesc;
+                        window.currentAlbumDesc.isTranslated = false;
+                    }
+
+                    // 详情标记为未翻译，用户点击时再翻译
+                    window.currentAlbumDesc.longTranslated = null;
+                    window.currentAlbumDesc.longNeedsTranslation = (wikiLang !== 'zh');
                 } else {
                     // 中文内容直接显示
                     descEl.textContent = shortDesc;
@@ -2888,15 +2897,16 @@
             }
         }
 
-        // 智谱AI翻译
-        async function translateDescription(shortText, longText) {
+        // 智谱AI翻译 - 单独翻译文本
+        async function translateText(text, type) {
             const zhipuKey = getZhipuKey();
             if (!zhipuKey) {
                 console.warn('未配置智谱AI Key，跳过翻译');
-                return { short: shortText, long: longText };
+                return text;
             }
 
             try {
+                const label = type === 'short' ? '简短介绍' : '详细介绍';
                 const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -2907,16 +2917,7 @@
                         model: 'glm-4-flash',
                         messages: [{
                             role: 'user',
-                            content: `请将以下专辑介绍翻译成中文，保持原有的段落结构和格式（包括HTML标签）：
-
-【简短介绍】
-${shortText}
-
-【详细介绍】
-${longText}
-
-请按以下JSON格式返回翻译结果：
-{"short": "翻译后的简短介绍", "long": "翻译后的详细介绍"}`
+                            content: `请将以下专辑${label}翻译成中文，只返回翻译结果，不要添加任何解释或额外内容：\n\n${text}`
                         }],
                         temperature: 0.3
                     })
@@ -2925,18 +2926,12 @@ ${longText}
                 if (!response.ok) throw new Error('Translation API failed');
                 
                 const data = await response.json();
-                const content = data.choices[0].message.content;
-                
-                // 解析JSON
-                const jsonMatch = content.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    return JSON.parse(jsonMatch[0]);
-                }
-                
-                return { short: shortText, long: longText };
+                const translated = data.choices[0].message.content.trim();
+                console.log(`翻译${label}完成，原文${text.length}字，译文${translated.length}字`);
+                return translated;
             } catch (err) {
                 console.error('翻译失败:', err);
-                return { short: shortText, long: longText };
+                return text;
             }
         }
 
@@ -2956,7 +2951,13 @@ ${longText}
             } else {
                 // 切换到中文
                 descEl.textContent = window.currentAlbumDesc.shortTranslated;
-                detailsEl.innerHTML = window.currentAlbumDesc.longTranslated;
+                // 详情可能还没翻译
+                if (window.currentAlbumDesc.longTranslated) {
+                    detailsEl.innerHTML = window.currentAlbumDesc.longTranslated;
+                } else {
+                    detailsEl.innerHTML = '<div class="loading-details">正在翻译详情...</div>';
+                    translateDetailsOnDemand();
+                }
                 btn.textContent = '原文';
             }
         }
@@ -3160,6 +3161,11 @@ ${longText}
                 });
                 document.getElementById('tracksTab').classList.toggle('active', tab === 'tracks');
                 document.getElementById('detailsTab').classList.toggle('active', tab === 'details');
+
+                // 切换到详情时，懒加载翻译
+                if (tab === 'details' && window.currentAlbumDesc && window.currentAlbumDesc.longNeedsTranslation && !window.currentAlbumDesc.longTranslated) {
+                    translateDetailsOnDemand();
+                }
                 return;
             }
 
@@ -3169,6 +3175,20 @@ ${longText}
             });
             document.getElementById('historyTab').classList.toggle('active', tab === 'history');
             document.getElementById('favoritesTab').classList.toggle('active', tab === 'favorites');
+        }
+
+        // 懒加载翻译详情
+        async function translateDetailsOnDemand() {
+            const detailsEl = document.getElementById('detailsContent');
+            detailsEl.innerHTML = '<div class="loading-details">正在翻译详情...</div>';
+
+            const translated = await translateText(window.currentAlbumDesc.longOriginal, 'long');
+            if (translated !== window.currentAlbumDesc.longOriginal) {
+                window.currentAlbumDesc.longTranslated = translated;
+                detailsEl.innerHTML = translated;
+            } else {
+                detailsEl.innerHTML = window.currentAlbumDesc.longOriginal;
+            }
         }
 
         // ===== ALBUM SEARCH =====
