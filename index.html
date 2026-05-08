@@ -2997,31 +2997,34 @@
                 { lang: 'zh', name: '中文' }
             ];
 
-            // 尝试多种可能的页面标题
+            // 尝试多种可能的页面标题（按优先级排序）
             const possibleTitles = [
                 `${title} (${artist} album)`,
                 `${title} (album)`,
-                `${title}`,
+                `${title} (${artist})`,
+                title,
                 `${artist} ${title}`,
-                `${title} (${artist})`
+                `${title} (song)`,  // 有些专辑页面以歌曲名存在
             ];
 
             for (const wiki of wikis) {
                 for (const pageTitle of possibleTitles) {
                     try {
                         const query = encodeURIComponent(pageTitle);
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-                        // 先尝试摘要API确认页面存在
+                        
+                        // 先尝试摘要API确认页面存在（不使用 AbortController，让请求自然完成或失败）
                         const summaryUrl = `https://${wiki.lang}.wikipedia.org/api/rest_v1/page/summary/${query}`;
-                        const summaryResp = await fetch(summaryUrl, { signal: controller.signal });
-                        clearTimeout(timeoutId);
-
+                        console.log(`尝试 ${wiki.name} 维基百科:`, pageTitle);
+                        
+                        const summaryResp = await fetch(summaryUrl);
+                        
                         if (summaryResp.ok) {
                             const summaryData = await summaryResp.json();
-                            if (summaryData.extract && summaryData.extract.length > 100) {
-                                console.log(`Wikipedia found (${wiki.name}):`, pageTitle);
+                            
+                            // 检查是否是有效页面（不是消歧义页面等）
+                            if (summaryData.extract && summaryData.extract.length > 50 && 
+                                !summaryData.type?.includes('disambiguation')) {
+                                console.log(`✅ 维基百科找到 (${wiki.name}):`, pageTitle);
                                 
                                 // 获取完整内容
                                 const fullContent = await fetchWikipediaFullContent(wiki.lang, pageTitle);
@@ -3034,10 +3037,12 @@
                             }
                         }
                     } catch (err) {
-                        console.warn(`Wikipedia ${wiki.name} attempt failed:`, pageTitle, err.message);
+                        console.warn(`维基百科 ${wiki.name} 尝试失败:`, pageTitle, err.message);
                     }
                 }
             }
+            
+            console.log('❌ 维基百科未找到任何匹配页面');
             return null;
         }
 
@@ -3045,30 +3050,27 @@
         async function fetchWikipediaFullContent(lang, pageTitle) {
             try {
                 const query = encodeURIComponent(pageTitle);
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000);
 
                 // 使用 Wikipedia API 获取完整内容
                 const apiUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=false&explaintext=true&format=json&origin=*&titles=${query}`;
-                console.log('Fetching Wikipedia full content:', apiUrl);
+                console.log('获取维基百科完整内容:', apiUrl);
                 
-                const response = await fetch(apiUrl, { signal: controller.signal });
-                clearTimeout(timeoutId);
+                const response = await fetch(apiUrl);
 
                 if (response.ok) {
                     const data = await response.json();
                     const pages = data.query.pages;
                     const pageId = Object.keys(pages)[0];
                     
-                    console.log('Wikipedia page ID:', pageId, 'Has extract:', !!pages[pageId].extract);
+                    console.log('维基百科页面ID:', pageId, '有内容:', !!pages[pageId].extract);
                     
                     if (pageId && pages[pageId].extract) {
-                        console.log('Wikipedia full content length:', pages[pageId].extract.length);
+                        console.log('维基百科完整内容长度:', pages[pageId].extract.length);
                         return pages[pageId].extract;
                     }
                 }
             } catch (err) {
-                console.warn('Failed to fetch full content:', err);
+                console.warn('获取完整内容失败:', err);
             }
             return null;
         }
