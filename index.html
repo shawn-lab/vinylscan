@@ -4190,13 +4190,71 @@
             return result || text.substring(0, maxLength) + '...';
         }
 
+        // 将 Tavily 搜索结果翻译成中文（使用智谱 AI）
+        async function translateSearchResult(rawContent, artist, title, year) {
+            const zhipuKey = getZhipuKey();
+            
+            if (zhipuKey) {
+                try {
+                    const prompt = `以下是关于专辑《${title}》（艺术家：${artist}）的搜索结果。请将这些信息整理成一篇流畅的中文专辑介绍。
+
+要求：
+1. 用中文撰写，保留专有名词（人名、曲名、厂牌名）的原文
+2. 分成两部分：第一部分是2-3句话的简介，用【简介】标记；第二部分是更详细的介绍，用【详情】标记
+3. 详细介绍中可以包含音乐风格、创作背景、曲目亮点、乐评反响等
+4. 不要编造信息，只基于搜索结果中有的内容
+5. 如果搜索结果信息很少，就如实说明，不要编造
+
+搜索结果：
+${rawContent}`;
+
+                    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${zhipuKey}`
+                        },
+                        body: JSON.stringify({
+                            model: 'glm-4-flash',
+                            messages: [{ role: 'user', content: prompt }]
+                        }),
+                        signal: AbortSignal.timeout(30000)
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const text = data.choices?.[0]?.message?.content;
+                        if (text) {
+                            // 分离简介和详情
+                            const sections = text.split(/【详情】|【详细信息】/);
+                            let shortDesc = (sections[0] || '').replace(/【简介】|【简述】/g, '').trim();
+                            let longDesc = sections[1] ? sections[1].trim() : shortDesc;
+                            
+                            if (!sections[1] && shortDesc.length > 200) {
+                                longDesc = shortDesc;
+                                const firstPeriod = shortDesc.indexOf('。', 100);
+                                shortDesc = firstPeriod > 0 ? shortDesc.substring(0, firstPeriod + 1) : shortDesc.substring(0, 200);
+                            }
+                            
+                            return { short: shortDesc, long: longDesc };
+                        }
+                    }
+                } catch (err) {
+                    console.warn('智谱翻译搜索结果失败:', err.message);
+                }
+            }
+            
+            // 智谱也失败了，返回原始内容
+            return { short: rawContent.substring(0, 200), long: rawContent };
+        }
+
         // Tavily + 智谱 AI 联网搜索专辑信息
         async function searchAlbumWithGemini(artist, title, year) {
             // 1. 优先使用 Tavily（国际化搜索）
             const tavilyKey = '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';
             if (tavilyKey) {
                 try {
-                    const query = `${artist} ${title} album${year ? ' ' + year : ''}`;
+                    const query = `${artist} ${title} album${year ? ' ' + year : ''} 专辑信息 简介 风格 乐评`;
                     const response = await fetch('https://api.tavily.com/search', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -4217,24 +4275,26 @@
                     const results = data.results || [];
 
                     if (answer || results.length > 0) {
-                        // 整合搜索结果
-                        let content = '';
+                        // 整合搜索结果，用智谱 AI 翻译成中文
+                        let rawContent = '';
                         
                         if (answer) {
-                            content += answer + '\n\n';
+                            rawContent += answer + '\n\n';
                         }
 
                         // 补充搜索结果中的详细信息
                         for (const r of results.slice(0, 3)) {
                             if (r.content && r.content.length > 30) {
-                                content += `**${r.title}**\n${r.content}\n\n`;
+                                rawContent += `${r.title}\n${r.content}\n\n`;
                             }
                         }
 
-                        if (content.trim()) {
+                        if (rawContent.trim()) {
+                            // 用智谱 AI 将英文搜索结果翻译成中文
+                            const translatedContent = await translateSearchResult(rawContent, artist, title, year);
                             return {
-                                short: answer || (results[0]?.content || '').substring(0, 200),
-                                long: content.trim(),
+                                short: translatedContent.short,
+                                long: translatedContent.long,
                                 source: 'Tavily AI 搜索'
                             };
                         }
