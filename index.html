@@ -2780,7 +2780,7 @@
             aiTab.dataset.searched = '';
 
             // 加载专辑描述
-            loadAlbumDescription(data.artist, data.title, data.year);
+            loadAlbumDescription(data.artist, data.title, data.year, data.country);
         }
 
         function displayFallbackResult(aiData) {
@@ -3126,7 +3126,7 @@
         }
 
         // ===== ALBUM DESCRIPTION =====
-        async function loadAlbumDescription(artist, title, year) {
+        async function loadAlbumDescription(artist, title, year, country) {
             const descEl = document.getElementById('descriptionContent');
             const detailsEl = document.getElementById('detailsContent');
 
@@ -3137,7 +3137,7 @@
             try {
                 // 并行调用维基百科和 MusicBrainz
                 const [wikiData, mbData] = await Promise.all([
-                    fetchWikipediaData(artist, title),
+                    fetchWikipediaData(artist, title, country),
                     fetchMusicBrainzData(artist, title)
                 ]);
 
@@ -3827,8 +3827,32 @@
         }
 
         // 维基百科API - 搜索优先 + 英文优先
+        // 国家代码到国籍/语言的映射
+        const COUNTRY_NATIONALITY_MAP = {
+            'Mexico': ['mexican', 'mexico', '墨西哥'],
+            'Japan': ['japanese', 'japan', '日本'],
+            'UK': ['british', 'uk', 'united kingdom', 'england', '英国'],
+            'US': ['american', 'usa', 'united states', '美国'],
+            'Germany': ['german', 'germany', '德国'],
+            'France': ['french', 'france', '法国'],
+            'South Korea': ['korean', 'south korea', 'korea', '韩国'],
+            'China': ['chinese', 'china', '中国'],
+            'Brazil': ['brazilian', 'brazil', '巴西'],
+            'Canada': ['canadian', 'canada', '加拿大'],
+            'Australia': ['australian', 'australia', '澳大利亚'],
+            'Spain': ['spanish', 'spain', '西班牙'],
+            'Italy': ['italian', 'italy', '意大利'],
+            'Netherlands': ['dutch', 'netherlands', 'holland', '荷兰'],
+            'Sweden': ['swedish', 'sweden', '瑞典'],
+            'Norway': ['norwegian', 'norway', '挪威'],
+            'Finland': ['finnish', 'finland', '芬兰'],
+            'Denmark': ['danish', 'denmark', '丹麦'],
+            'Russia': ['russian', 'russia', '俄罗斯'],
+            'India': ['indian', 'india', '印度']
+        };
+
         // 计算维基百科搜索结果与专辑实体的匹配分数
-        function calculateWikiMatchScore(result, artist, title, summaryData) {
+        function calculateWikiMatchScore(result, artist, title, summaryData, country) {
             const artistLower = artist.toLowerCase();
             const titleLower = title.toLowerCase();
             const pageTitleLower = result.title.toLowerCase();
@@ -3883,7 +3907,17 @@
                 reasons.push('描述含艺术家关联');
             }
             
-            // 7. 排除人物页面（如果是人物页面且没有专辑关联，大幅减分）
+            // 7. 国家/国籍验证（关键！用于区分同名艺术家）
+            if (country) {
+                const nationalities = COUNTRY_NATIONALITY_MAP[country] || [];
+                const hasNationality = nationalities.some(n => fullContent.includes(n));
+                if (hasNationality) {
+                    score += 70;
+                    reasons.push(`国籍匹配(${country})`);
+                }
+            }
+            
+            // 8. 排除人物页面（如果是人物页面且没有专辑关联，大幅减分）
             const isPersonPage = summaryData?.type?.includes('person') ||
                                 descriptionLower.includes('singer') ||
                                 descriptionLower.includes('musician') ||
@@ -3895,10 +3929,20 @@
                 reasons.push('人物页面（无专辑关联）');
             }
             
+            // 9. 如果是人物页面但有国籍匹配，可能是正确的艺术家页面
+            if (isPersonPage && country) {
+                const nationalities = COUNTRY_NATIONALITY_MAP[country] || [];
+                const hasNationality = nationalities.some(n => fullContent.includes(n));
+                if (hasNationality && extractLower.includes(artistLower)) {
+                    score += 40; // 补回部分分数
+                    reasons.push('艺术家页面（国籍+名字匹配）');
+                }
+            }
+            
             return { score, reasons };
         }
 
-        async function fetchWikipediaData(artist, title) {
+        async function fetchWikipediaData(artist, title, country) {
             // 语言优先级：英文→日文→中文（每种语言完整尝试后再试下一种）
             const wikis = [
                 { lang: 'en', name: '英文' },
@@ -3931,7 +3975,7 @@
                                         const summaryData = await summaryResp.json();
                                         if (summaryData.extract && summaryData.extract.length > 50 &&
                                             !summaryData.type?.includes('disambiguation')) {
-                                            const { score, reasons } = calculateWikiMatchScore(result, artist, title, summaryData);
+                                            const { score, reasons } = calculateWikiMatchScore(result, artist, title, summaryData, country);
                                             candidates.push({
                                                 result,
                                                 summaryData,
