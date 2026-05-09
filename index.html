@@ -4256,8 +4256,16 @@ ${rawContent}`;
                 }
             }
             
-            // 智谱也失败了，返回原始内容
-            return { short: rawContent.substring(0, 200), long: rawContent };
+            // 智谱也失败了，清理 Markdown 格式后返回
+            const cleanContent = rawContent
+                .replace(/\*\*(.+?)\*\*/g, '$1')  // 移除 **加粗**
+                .replace(/\n{3,}/g, '\n\n')       // 多个换行合并
+                .trim();
+            
+            return { 
+                short: cleanContent.substring(0, 200) + '...', 
+                long: cleanContent + '\n\n⚠️ 翻译服务暂时不可用，以上为原始搜索结果（英文）' 
+            };
         }
 
         // Tavily + 智谱 AI 联网搜索专辑信息
