@@ -3874,23 +3874,64 @@
                         if (searchData.query?.search) {
                             const artistLower = artist.toLowerCase();
                             const titleLower = title.toLowerCase();
+                            const fullQueryLower = searchQuery.toLowerCase();
                             
                             for (const result of searchData.query.search) {
                                 const pageTitle = result.title;
                                 const snippet = (result.snippet || '').toLowerCase();
+                                const pageTitleLower = pageTitle.toLowerCase();
                                 
-                                const artistMatch = snippet.includes(artistLower) || 
-                                                  snippet.includes(artistLower.replace(/-/g, ' '));
-                                const titleMatch = pageTitle.toLowerCase().includes(titleLower);
+                                // 1. 完整词组匹配（最高优先级）
+                                const fullPhraseMatch = pageTitleLower.includes(fullQueryLower);
                                 
-                                if (artistMatch || titleMatch) {
-                                    console.log(`✅ 搜索 API 找到 (${wiki.name}):`, pageTitle);
+                                // 2. 艺术家+专辑同时存在（中等优先级）
+                                const artistInTitle = pageTitleLower.includes(artistLower) || 
+                                                      pageTitleLower.includes(artistLower.replace(/-/g, ' '));
+                                const artistInSnippet = snippet.includes(artistLower) || 
+                                                        snippet.includes(artistLower.replace(/-/g, ' '));
+                                const titleInTitle = pageTitleLower.includes(titleLower);
+                                const bothMatch = (artistInTitle || artistInSnippet) && titleInTitle;
+                                
+                                // 3. 只匹配专辑名（低优先级，需要额外验证不是人物页面）
+                                const titleOnlyMatch = titleInTitle && !artistInTitle && !artistInSnippet;
+                                
+                                let shouldUse = false;
+                                let matchType = '';
+                                
+                                if (fullPhraseMatch) {
+                                    shouldUse = true;
+                                    matchType = '完整词组';
+                                } else if (bothMatch) {
+                                    shouldUse = true;
+                                    matchType = '艺术家+专辑';
+                                } else if (titleOnlyMatch) {
+                                    // 只匹配专辑名时，需要获取详情确认不是人物页面
+                                    matchType = '仅专辑名（需验证）';
+                                }
+                                
+                                if (shouldUse || titleOnlyMatch) {
+                                    console.log(`🔍 候选 (${wiki.name}):`, pageTitle, `- ${matchType}`);
                                     const summaryUrl = `https://${wiki.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
                                     const summaryResp = await fetch(summaryUrl);
                                     if (summaryResp.ok) {
                                         const summaryData = await summaryResp.json();
+                                        
+                                        // 排除人物页面（type 包含 'person' 或描述包含歌手/音乐家等）
+                                        const isPersonPage = summaryData.type?.includes('person') ||
+                                                            summaryData.description?.toLowerCase().includes('singer') ||
+                                                            summaryData.description?.toLowerCase().includes('musician') ||
+                                                            summaryData.description?.toLowerCase().includes('歌手') ||
+                                                            summaryData.description?.toLowerCase().includes('音乐家');
+                                        
+                                        // 如果是人物页面且只匹配了专辑名，排除
+                                        if (titleOnlyMatch && isPersonPage) {
+                                            console.log(`❌ 排除人物页面 (${wiki.name}):`, pageTitle);
+                                            continue;
+                                        }
+                                        
                                         if (summaryData.extract && summaryData.extract.length > 50 &&
                                             !summaryData.type?.includes('disambiguation')) {
+                                            console.log(`✅ 搜索 API 找到 (${wiki.name}):`, pageTitle, `- ${matchType}`);
                                             const fullContent = await fetchWikipediaFullContent(wiki.lang, pageTitle);
                                             return { ...summaryData, fullContent, lang: wiki.lang };
                                         }
