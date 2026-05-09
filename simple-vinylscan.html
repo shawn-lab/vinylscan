@@ -439,6 +439,9 @@
       document.getElementById('no-results').style.display = 'none';
 
       try {
+        console.log('Search query:', query);
+        console.log('Token length:', token.length);
+        
         const res = await fetch(`${DISCOGS_API}/database/search?q=${encodeURIComponent(query)}&type=release&per_page=8`, {
           headers: { 
             'Authorization': `Discogs token=${token}`, 
@@ -447,13 +450,20 @@
           }
         });
         
+        console.log('API response status:', res.status);
+        
         if (!res.ok) {
+          const errorBody = await res.text();
+          console.log('Error response:', errorBody);
+          
           if (res.status === 401) {
-            throw new Error('Token无效，请检查Discogs Token是否正确');
+            throw new Error('Token无效或已过期，请检查Discogs Token是否正确。确保Token没有多余空格。');
+          } else if (res.status === 403) {
+            throw new Error('访问被拒绝，请检查Token权限或Discogs账户状态。');
           } else if (res.status === 429) {
-            throw new Error('请求过于频繁，请稍后再试');
+            throw new Error('请求过于频繁，请等待60秒后再试。');
           } else {
-            throw new Error(`搜索失败 (${res.status})`);
+            throw new Error(`搜索失败 (${res.status}): ${errorBody.substring(0, 100)}`);
           }
         }
         const data = await res.json();
