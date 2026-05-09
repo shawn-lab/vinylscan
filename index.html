@@ -4287,27 +4287,29 @@
         }
 
         // 将 Tavily 搜索结果翻译成中文（使用智谱 AI）
-        async function translateSearchResult(rawContent, artist, title, year, country) {
+        async function translateSearchResult(rawContent, artist, title, year, country, genres) {
             const zhipuKey = getZhipuKey();
             
             if (zhipuKey) {
                 try {
                     const countryHint = country ? `\n- 该艺术家来自：${country}` : '';
+                    const genreHint = genres ? `\n- 音乐风格：${genres}` : '';
                     const prompt = `以下是关于专辑《${title}》（艺术家：${artist}）的搜索结果。
 
-【重要提示 - 请仔细阅读】
+【实体信息 - 请严格验证】
 - 艺术家名称是：${artist}（注意：这是一个乐队/艺术家的名字，不是专辑名）
-- 专辑名称是：${title}${countryHint}
-- 这两个是完全不同的实体，不要混淆！
+- 专辑名称是：${title}${countryHint}${genreHint}
+- 以上信息来自 Discogs 音乐数据库，是准确的
 
-【验证标准】
-请根据以下标准判断搜索结果是否正确：
-- 搜索结果中提到的艺术家国籍/来源地应该与"${country || '未知'}"一致
-- 如果搜索结果提到的是日本歌手、日本乐队，而目标艺术家来自${country || '其他国家'}，这些是错误的
-- 如果搜索结果中的歌曲、专辑风格与目标艺术家不符，请排除
+【验证标准 - 必须同时满足】
+1. 搜索结果中提到的艺术家国籍/来源地应该与"${country || '未知'}"一致
+2. 搜索结果中提到的音乐风格应该与"${genres || '未知'}"相关
+3. 如果搜索结果中提到的风格是 J-POP、日本流行等，而目标风格是${genres || '其他'}，这些是错误的
+4. 如果搜索结果中的歌曲、专辑与目标艺术家不符，请排除
 
 【必须排除的错误信息】
 - 与目标艺术家国籍不符的信息
+- 与目标音乐风格不符的信息
 - 明显属于其他同名艺术家的信息
 
 请将这些信息整理成一篇流畅的中文专辑介绍。
@@ -4317,7 +4319,7 @@
 2. 分成两部分：第一部分是2-3句话的简介，用【简介】标记；第二部分是更详细的介绍，用【详情】标记
 3. 详细介绍中可以包含音乐风格、创作背景、曲目亮点、乐评反响等
 4. 不要编造信息，只基于搜索结果中有的内容
-5. 如果搜索结果与目标艺术家不符（如国籍不匹配、风格不匹配），请明确说明"搜索结果与目标专辑不完全匹配，可能存在混淆"
+5. 如果搜索结果与目标实体不符（国籍不匹配、风格不匹配），请明确说明"搜索结果与目标专辑不完全匹配，可能存在混淆"
 
 搜索结果：
 ${rawContent}`;
@@ -4371,14 +4373,19 @@ ${rawContent}`;
         }
 
         // Tavily + 智谱 AI 联网搜索专辑信息
-        async function searchAlbumWithGemini(artist, title, year, country) {
+        async function searchAlbumWithGemini(artist, title, year, country, genres) {
             // 1. 优先使用 Tavily（国际化搜索）
             const tavilyKey = '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';
             if (tavilyKey) {
                 try {
-                    // 构建搜索词：用 Discogs 提供的实体信息（artist, title, year, country）
-                    // country 是关键，用于区分同名艺术家（如 Mexico vs Japan）
-                    const query = `"${artist}" "${title}" album${year ? ' ' + year : ''}${country ? ' ' + country : ''} music review`;
+                    // 构建搜索词：用 Discogs 提供的实体信息
+                    // country + genres 是关键，用于区分同名艺术家
+                    const contextParts = [];
+                    if (year) contextParts.push(year);
+                    if (country) contextParts.push(country);
+                    if (genres) contextParts.push(genres);
+                    const contextStr = contextParts.join(' ');
+                    const query = `"${artist}" "${title}" album ${contextStr} review`;
                     console.log('Tavily 搜索:', query);
                     const response = await fetch('https://api.tavily.com/search', {
                         method: 'POST',
@@ -4415,8 +4422,8 @@ ${rawContent}`;
                         }
 
                         if (rawContent.trim()) {
-                            // 用智谱 AI 将英文搜索结果翻译成中文（传入 country 用于验证）
-                            const translatedContent = await translateSearchResult(rawContent, artist, title, year, country);
+                            // 用智谱 AI 将英文搜索结果翻译成中文（传入 country + genres 用于验证）
+                            const translatedContent = await translateSearchResult(rawContent, artist, title, year, country, genres);
                             return {
                                 short: translatedContent.short,
                                 long: translatedContent.long,
@@ -4562,6 +4569,7 @@ ${content.substring(0, 3000)}
             const title = window.currentAlbumData?.title || '';
             const year = window.currentAlbumData?.year || '';
             const country = window.currentAlbumData?.country || '';
+            const genres = (window.currentAlbumData?.genres || []).join(', ');
 
             if (!artist || !title) {
                 showToast('暂无专辑信息', 'error');
@@ -4582,7 +4590,7 @@ ${content.substring(0, 3000)}
                 </div>
             `;
 
-            const result = await searchAlbumWithGemini(artist, title, year, country);
+            const result = await searchAlbumWithGemini(artist, title, year, country, genres);
             container.dataset.searching = 'false';
 
             if (result) {
