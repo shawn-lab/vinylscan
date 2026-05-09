@@ -1933,6 +1933,25 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">OpenAI API Key <span style="color: var(--text-muted); font-weight: normal;">（可选）</span></label>
+                <input type="password" class="form-input" id="openaiKeyInput" placeholder="sk-...">
+                <div class="form-hint">
+                    用于 GPT-4V 视觉识别（多模型对比）。配置后可启用"精准模式"提高识别准确率。
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">OCR 识别策略</label>
+                <select class="form-input" id="ocrStrategyInput">
+                    <option value="single">快速模式（仅用智谱，速度快）</option>
+                    <option value="parallel">精准模式（多模型投票，准确率高）</option>
+                </select>
+                <div class="form-hint">
+                    精准模式需要同时配置智谱和 OpenAI Key，两个模型同时识别后投票选择最佳结果。
+                </div>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label">Discogs Token</label>
                 <input type="password" class="form-input" id="discogsTokenInput" placeholder="你的 Discogs Personal Access Token">
                 <div class="form-hint">
@@ -2009,17 +2028,25 @@
         // ===== SETTINGS =====
         function loadSettings() {
             const zhipuKey = localStorage.getItem('vinylscan_zhipu_key') || '';
+            const openaiKey = localStorage.getItem('openaiKey') || '';
             const discogsToken = localStorage.getItem('vinylscan_discogs_token') || '';
+            const ocrStrategy = localStorage.getItem('ocrStrategy') || 'single';
             document.getElementById('zhipuKeyInput').value = zhipuKey;
+            document.getElementById('openaiKeyInput').value = openaiKey;
             document.getElementById('discogsTokenInput').value = discogsToken;
+            document.getElementById('ocrStrategyInput').value = ocrStrategy;
         }
 
         function saveSettings() {
             const zhipuKey = document.getElementById('zhipuKeyInput').value.trim();
+            const openaiKey = document.getElementById('openaiKeyInput').value.trim();
             const discogsToken = document.getElementById('discogsTokenInput').value.trim();
+            const ocrStrategy = document.getElementById('ocrStrategyInput').value;
 
             localStorage.setItem('vinylscan_zhipu_key', zhipuKey);
+            localStorage.setItem('openaiKey', openaiKey);
             localStorage.setItem('vinylscan_discogs_token', discogsToken);
+            localStorage.setItem('ocrStrategy', ocrStrategy);
 
             closeSettings();
             showToast('设置已保存', 'success');
@@ -2277,9 +2304,9 @@
             hideResults();
 
             try {
-                // AI 识别（直接使用原图）
+                // AI 识别（使用多模型并行）
                 updateLoading('正在识别专辑封面...', 'AI 正在分析图片内容');
-                const albumInfo = await identifyAlbum(currentImageBase64, zhipuKey);
+                const albumInfo = await identifyAlbumParallel(currentImageBase64);
 
                 if (!albumInfo) {
                     showError('未识别到专辑', 'AI 未能识别图片中的专辑封面。请尝试上传更清晰、更完整的封面照片。');
@@ -2329,7 +2356,188 @@
             }
         }
 
-        // ===== 智谱 GLM-4V =====
+        // ===== OCR 多模型架构 =====
+        const OCR_MODELS = {
+            zhipu: {
+                name: '智谱GLM-4V',
+                endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+                model: 'glm-4v-plus',
+                priority: 1,
+                keyName: 'zhipuKey'
+            },
+            openai: {
+                name: 'OpenAI GPT-4V',
+                endpoint: 'https://api.openai.com/v1/chat/completions',
+                model: 'gpt-4o',
+                priority: 2,
+                keyName: 'openaiKey'
+            }
+        };
+
+        // 统一的模型调用接口
+        async function callVisionModel(modelKey, imageBase64, apiKey) {
+            const config = OCR_MODELS[modelKey];
+            if (!config) throw new Error(`未知模型: ${modelKey}`);
+            
+            const prompt = `你是一个专业的音乐专辑封面识别专家。请仔细识别这张专辑封面（可能是黑胶唱片或CD封面），并以 JSON 格式返回。
+
+返回格式要求：
+{
+  "title": "专辑名称（保留封面上显示的原始语言和拼写）",
+  "artist": "艺术家/乐队名称（保留封面上显示的原始语言和拼写）",
+  "year": "发行年份（如果能识别）",
+  "genres": ["流派1", "流派2"],
+  "tracklist": ["曲目1", "曲目2", ...],
+  "confidence": "high/medium/low"
+}
+
+重要规则：
+1. **必须保留原始语言**：如果封面上是中文、日文、匈牙利文等，请原样返回，不要翻译成英文或中文
+2. 如果封面上同时有多种语言，请都保留
+3. 如果图片中不是专辑封面，请返回 {"error": "not_an_album_cover"}
+4. 如果无法识别具体专辑，请返回 {"error": "unrecognized"}
+5. 只返回 JSON，不要返回其他内容
+6. 尽量准确识别专辑名称和艺术家，这是最重要的信息
+7. 如果能识别出曲目列表最好，不确定则留空数组`;
+
+            let requestBody;
+            let headers = { 'Content-Type': 'application/json' };
+
+            if (modelKey === 'zhipu') {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+                requestBody = {
+                    model: config.model,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'image_url', image_url: { url: imageBase64 } },
+                            { type: 'text', text: prompt }
+                        ]
+                    }],
+                    max_tokens: 1000,
+                    temperature: 0.2
+                };
+            } else if (modelKey === 'openai') {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+                requestBody = {
+                    model: config.model,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'image_url', image_url: { url: imageBase64 } },
+                            { type: 'text', text: prompt }
+                        ]
+                    }],
+                    max_tokens: 1000,
+                    temperature: 0.2
+                };
+            }
+
+            const response = await fetch(config.endpoint, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestBody),
+                signal: AbortSignal.timeout(30000)
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error?.message || `${config.name} API 错误 (${response.status})`);
+            }
+
+            const data = await response.json();
+            const content = data.choices[0]?.message?.content || '';
+
+            // 解析 JSON
+            const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const result = JSON.parse(cleaned);
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            return { ...result, model: modelKey };
+        }
+
+        // 结果投票聚合
+        function aggregateOCRResults(results, modelNames) {
+            const validResults = results
+                .map((r, i) => ({ ...r, model: modelNames[i] }))
+                .filter(r => r.status === 'fulfilled')
+                .map(r => r.value);
+
+            if (validResults.length === 0) {
+                throw new Error('所有模型识别失败');
+            }
+
+            if (validResults.length === 1) {
+                return { ...validResults[0], source: validResults[0].model };
+            }
+
+            // 多模型投票：比较 artist 和 title 的相似度
+            const votes = {};
+            validResults.forEach(r => {
+                const key = `${r.artist}|${r.title}`;
+                if (!votes[key]) votes[key] = { count: 0, results: [] };
+                votes[key].count++;
+                votes[key].results.push(r);
+            });
+
+            // 选择得票最多的结果
+            const winner = Object.entries(votes)
+                .sort((a, b) => b[1].count - a[1].count)[0];
+
+            const [artist, title] = winner[0].split('|');
+
+            return {
+                artist,
+                title,
+                year: winner[1].results[0].year,
+                genres: winner[1].results[0].genres,
+                tracklist: winner[1].results[0].tracklist,
+                confidence: winner[1].count / validResults.length,
+                modelVotes: Object.fromEntries(
+                    Object.entries(votes).map(([k, v]) => [k, v.count])
+                ),
+                allResults: validResults,
+                source: 'multi'
+            };
+        }
+
+        // 并行调用多模型
+        async function identifyAlbumParallel(imageBase64) {
+            const strategy = localStorage.getItem('ocrStrategy') || 'single';
+            const apiKeys = {
+                zhipu: getZhipuKey(),
+                openai: localStorage.getItem('openaiKey')
+            };
+
+            // 过滤出有 Key 的模型
+            const availableModels = Object.keys(OCR_MODELS)
+                .filter(k => apiKeys[OCR_MODELS[k].keyName]);
+
+            if (availableModels.length === 0) {
+                throw new Error('请先在设置页配置至少一个 AI Key');
+            }
+
+            // 单模型模式或只有一个模型可用
+            if (strategy === 'single' || availableModels.length === 1) {
+                const model = availableModels[0];
+                return await callVisionModel(model, imageBase64, apiKeys[OCR_MODELS[model].keyName]);
+            }
+
+            // 并行模式：同时调用所有可用模型
+            console.log('多模型并行识别:', availableModels);
+            const results = await Promise.allSettled(
+                availableModels.map(model =>
+                    callVisionModel(model, imageBase64, apiKeys[OCR_MODELS[model].keyName])
+                )
+            );
+
+            return aggregateOCRResults(results, availableModels);
+        }
+
+        // ===== 智谱 GLM-4V（保留原有函数作为备用）=====
         // glm-4v-flash 不支持 base64，使用 glm-4v-plus（支持 base64）
         async function identifyAlbum(imageBase64, apiKey) {
             const maxRetries = 3;
