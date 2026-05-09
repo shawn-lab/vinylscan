@@ -4287,22 +4287,28 @@
         }
 
         // 将 Tavily 搜索结果翻译成中文（使用智谱 AI）
-        async function translateSearchResult(rawContent, artist, title, year) {
+        async function translateSearchResult(rawContent, artist, title, year, country) {
             const zhipuKey = getZhipuKey();
             
             if (zhipuKey) {
                 try {
+                    const countryHint = country ? `\n- 该艺术家来自：${country}` : '';
                     const prompt = `以下是关于专辑《${title}》（艺术家：${artist}）的搜索结果。
 
 【重要提示 - 请仔细阅读】
 - 艺术家名称是：${artist}（注意：这是一个乐队/艺术家的名字，不是专辑名）
-- 专辑名称是：${title}
+- 专辑名称是：${title}${countryHint}
 - 这两个是完全不同的实体，不要混淆！
 
+【验证标准】
+请根据以下标准判断搜索结果是否正确：
+- 搜索结果中提到的艺术家国籍/来源地应该与"${country || '未知'}"一致
+- 如果搜索结果提到的是日本歌手、日本乐队，而目标艺术家来自${country || '其他国家'}，这些是错误的
+- 如果搜索结果中的歌曲、专辑风格与目标艺术家不符，请排除
+
 【必须排除的错误信息】
-- 如果搜索结果中出现"日本歌手YUI"、"日本女歌手"、"J-POP"等内容，这些是错误的，必须排除
-- 如果搜索结果中出现"feel my soul"、"My Friend"、"I Loved Yesterday"等日本歌曲，这些是错误的，必须排除
-- 我们要找的是艺术家"${artist}"的专辑《${title}》，不是其他同名艺术家
+- 与目标艺术家国籍不符的信息
+- 明显属于其他同名艺术家的信息
 
 请将这些信息整理成一篇流畅的中文专辑介绍。
 
@@ -4311,7 +4317,7 @@
 2. 分成两部分：第一部分是2-3句话的简介，用【简介】标记；第二部分是更详细的介绍，用【详情】标记
 3. 详细介绍中可以包含音乐风格、创作背景、曲目亮点、乐评反响等
 4. 不要编造信息，只基于搜索结果中有的内容
-5. 如果搜索结果与目标艺术家不符（如提到了日本歌手YUI），请明确说明"搜索结果与目标专辑不完全匹配，可能存在混淆"
+5. 如果搜索结果与目标艺术家不符（如国籍不匹配、风格不匹配），请明确说明"搜索结果与目标专辑不完全匹配，可能存在混淆"
 
 搜索结果：
 ${rawContent}`;
@@ -4365,15 +4371,14 @@ ${rawContent}`;
         }
 
         // Tavily + 智谱 AI 联网搜索专辑信息
-        async function searchAlbumWithGemini(artist, title, year) {
+        async function searchAlbumWithGemini(artist, title, year, country) {
             // 1. 优先使用 Tavily（国际化搜索）
             const tavilyKey = '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';
             if (tavilyKey) {
                 try {
-                    // 使用引号明确实体边界，排除常见同名实体干扰
-                    // 对于 "Yui" 这种常见名，排除日本歌手 YUI 的干扰
-                    const excludeTerms = title.toLowerCase() === 'yui' ? ' -YUI -Japanese -J-POP' : '';
-                    const query = `"${artist}" "${title}" album${year ? ' ' + year : ''}${excludeTerms} music review`;
+                    // 构建搜索词：用 Discogs 提供的实体信息（artist, title, year, country）
+                    // country 是关键，用于区分同名艺术家（如 Mexico vs Japan）
+                    const query = `"${artist}" "${title}" album${year ? ' ' + year : ''}${country ? ' ' + country : ''} music review`;
                     console.log('Tavily 搜索:', query);
                     const response = await fetch('https://api.tavily.com/search', {
                         method: 'POST',
@@ -4410,8 +4415,8 @@ ${rawContent}`;
                         }
 
                         if (rawContent.trim()) {
-                            // 用智谱 AI 将英文搜索结果翻译成中文
-                            const translatedContent = await translateSearchResult(rawContent, artist, title, year);
+                            // 用智谱 AI 将英文搜索结果翻译成中文（传入 country 用于验证）
+                            const translatedContent = await translateSearchResult(rawContent, artist, title, year, country);
                             return {
                                 short: translatedContent.short,
                                 long: translatedContent.long,
@@ -4556,6 +4561,7 @@ ${content.substring(0, 3000)}
             const artist = window.currentAlbumData?.artist || '';
             const title = window.currentAlbumData?.title || '';
             const year = window.currentAlbumData?.year || '';
+            const country = window.currentAlbumData?.country || '';
 
             if (!artist || !title) {
                 showToast('暂无专辑信息', 'error');
@@ -4576,7 +4582,7 @@ ${content.substring(0, 3000)}
                 </div>
             `;
 
-            const result = await searchAlbumWithGemini(artist, title, year);
+            const result = await searchAlbumWithGemini(artist, title, year, country);
             container.dataset.searching = 'false';
 
             if (result) {
