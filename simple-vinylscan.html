@@ -369,6 +369,11 @@
           <input type="password" id="zhipu-key" placeholder="请输入智谱 AI API Key">
           <div class="hint">用于 AI 文字识别和翻译功能</div>
         </div>
+        <div class="form-group">
+          <label>Tavily AI Key</label>
+          <input type="password" id="tavily-key" placeholder="请输入 Tavily API Key">
+          <div class="hint">用于 AI 搜索专辑相关信息</div>
+        </div>
         <div class="settings-actions">
           <button class="btn-primary" onclick="saveSettings()">保存设置</button>
           <button class="btn-danger" onclick="resetSettings()">重置</button>
@@ -495,6 +500,175 @@
       }
     }
 
+    // 维基百科搜索函数 - 智能3级降级策略
+    async function fetchWikipediaDescription(albumTitle, artistName) {
+      const cleanArtist = artistName.replace(/\s*-\s*.*$/, '').trim();
+      
+      const searchQueries = [
+        `${albumTitle} ${cleanArtist} album`,
+        `${albumTitle} ${cleanArtist}`,
+        `${albumTitle} album`,
+        albumTitle
+      ];
+      
+      const languages = ['en', 'ja', 'zh'];
+      
+      for (const query of searchQueries) {
+        for (const lang of languages) {
+          try {
+            const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*&limit=1`;
+            const searchRes = await fetch(searchUrl);
+            
+            if (!searchRes.ok) continue;
+            
+            const searchData = await searchRes.json();
+            const results = searchData.query?.search || [];
+            
+            if (results.length > 0) {
+              const title = results[0].title;
+              
+              let summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+              if (lang !== 'en') {
+                summaryUrl = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+              }
+              
+              const summaryRes = await fetch(summaryUrl);
+              if (!summaryRes.ok) continue;
+              
+              const summaryData = await summaryRes.json();
+              
+              if (summaryData.extract) {
+                const artistLower = cleanArtist.toLowerCase();
+                const titleLower = albumTitle.toLowerCase();
+                const wikiTitleLower = title.toLowerCase();
+                
+                const artistMatch = artistLower.length < 3 || wikiTitleLower.includes(artistLower) || artistLower.includes(wikiTitleLower);
+                const titleMatch = wikiTitleLower.includes(titleLower) || titleLower.includes(wikiTitleLower);
+                
+                if (artistMatch || titleMatch || query === searchQueries[0]) {
+                  return {
+                    title: title,
+                    extract: summaryData.extract,
+                    url: summaryData.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+                    language: lang
+                  };
+                }
+              }
+            }
+          } catch (e) {
+            console.warn(`Wikipedia search failed for query "${query}" lang "${lang}":`, e);
+          }
+        }
+      }
+      
+      return null;
+    }
+
+    // 翻译函数 - 智谱 AI + MyMemory 降级
+    async function translateToChinese(text, zhipuKey) {
+      if (!text || text.trim().length === 0) return '';
+      
+      if (!zhipuKey) {
+        try {
+          const mymemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|zh-CN`;
+          const res = await fetch(mymemoryUrl);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.responseStatus === 200 && data.responseData?.translatedText) {
+              return data.responseData.translatedText;
+            }
+          }
+        } catch (e) {
+          console.warn('MyMemory translation failed:', e);
+        }
+        return text;
+      }
+      
+      try {
+        const res = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${zhipuKey}`,
+          },
+          body: JSON.stringify({
+            model: 'glm-4-flash',
+            messages: [
+              {
+                role: 'system',
+                content: '你是一个专业的翻译助手。请将以下文本翻译成中文，保持原意，准确流畅。如果已经是中文或无法翻译，则直接返回原文。'
+              },
+              {
+                role: 'user',
+                content: text
+              }
+            ],
+          }),
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          const translated = data.choices?.[0]?.message?.content?.trim();
+          if (translated && translated !== text) {
+            return translated;
+          }
+        }
+      } catch (e) {
+        console.warn('Zhipu translation failed:', e);
+      }
+      
+      try {
+        const mymemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|zh-CN`;
+        const res = await fetch(mymemoryUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.responseStatus === 200 && data.responseData?.translatedText) {
+            return data.responseData.translatedText;
+          }
+        }
+      } catch (e) {
+        console.warn('MyMemory fallback translation failed:', e);
+      }
+      
+      return text;
+    }
+
+    // Tavily AI 搜索函数
+    async function searchWithTavily(albumTitle, artistName, tavilyKey) {
+      if (!tavilyKey) {
+        return { success: false, error: '请在设置中配置 Tavily API Key', results: [] };
+      }
+      
+      try {
+        const query = `${artistName} ${albumTitle} album review`;
+        const res = await fetch('https://api.tavily.com/search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            api_key: tavilyKey,
+            query: query,
+            search_depth: 'basic',
+            max_results: 5,
+          }),
+        });
+        
+        if (!res.ok) {
+          throw new Error(`Tavily API error: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        return {
+          success: true,
+          results: data.results || []
+        };
+      } catch (e) {
+        console.error('Tavily search error:', e);
+        return { success: false, error: e.message, results: [] };
+      }
+    }
+
     async function showAlbum(id) {
       const token = getToken();
       if (!token) {
@@ -531,6 +705,23 @@
         const favorites = getFavorites();
         const isFavorited = favorites.some(f => f.id === id);
         
+        const artistName = data.artists?.map(a => a.name).join(', ') || 'Unknown';
+        
+        let wikiContent = null;
+        let wikiTranslated = null;
+        const zhipuKey = localStorage.getItem(STORAGE_KEYS.ZHIPU_KEY);
+        
+        showToast('正在获取维基百科介绍...', 'info');
+        
+        try {
+          wikiContent = await fetchWikipediaDescription(data.title, artistName);
+          if (wikiContent && wikiContent.language !== 'zh') {
+            wikiTranslated = await translateToChinese(wikiContent.extract, zhipuKey);
+          }
+        } catch (e) {
+          console.warn('Wikipedia fetch failed:', e);
+        }
+        
         const detail = document.getElementById('detail-content');
         detail.innerHTML = `
           <div>
@@ -543,16 +734,16 @@
           </div>
           <div class="detail-info">
             <h1>${data.title}</h1>
-            <h2>${data.artists?.map(a => a.name).join(', ') || 'Unknown Artist'}</h2>
+            <h2>${artistName}</h2>
             <div class="detail-tags">
               ${data.year ? `<span class="detail-tag">${data.year}</span>` : ''}
               ${data.genres?.map(g => `<span class="detail-tag">${g}</span>`).join('') || ''}
               ${data.community?.rating?.average ? `<span class="detail-tag" style="background: #1DB954; color: #000;">★ ${data.community.rating.average}</span>` : ''}
             </div>
             <div class="tabs">
-              <button class="tab active" onclick="showTab('tracks')">曲目</button>
-              <button class="tab" onclick="showTab('info')">详情</button>
-              <button class="tab" onclick="showTab('ai')">AI 搜索</button>
+              <button class="tab active" onclick="showTab('tracks', '${data.id}', '${encodeURIComponent(data.title)}', '${encodeURIComponent(artistName)}')">曲目</button>
+              <button class="tab" onclick="showTab('info', '${data.id}', '${encodeURIComponent(data.title)}', '${encodeURIComponent(artistName)}')">详情</button>
+              <button class="tab" onclick="showTab('ai', '${data.id}', '${encodeURIComponent(data.title)}', '${encodeURIComponent(artistName)}')">AI 搜索</button>
             </div>
             <div class="tracklist tab-content active" id="tab-tracks">
               <h3>曲目列表</h3>
@@ -565,20 +756,32 @@
               `).join('') || '<p style="color: #666;">暂无曲目信息</p>'}
             </div>
             <div class="tracklist tab-content" id="tab-info">
-              <h3>专辑介绍</h3>
-              <p style="color: #B3B3B3;">${data.released_formatted || '暂无详细信息'}</p>
+              <h3>📖 维基百科介绍</h3>
+              ${wikiContent ? `
+                <p style="color: #B3B3B3; line-height: 1.8;">${wikiTranslated || wikiContent.extract}</p>
+                ${wikiContent.url ? `<p style="margin-top: 16px;"><a href="${wikiContent.url}" target="_blank" style="color: #1DB954;">在维基百科查看更多 →</a></p>` : ''}
+              ` : `
+                <p style="color: #666;">暂无维基百科介绍</p>
+                ${data.released_formatted ? `<p style="color: #B3B3B3; margin-top: 16px; line-height: 1.8;">${data.released_formatted}</p>` : ''}
+              `}
               ${data.labels?.length ? `<p style="margin-top: 16px;"><strong>厂牌:</strong> ${data.labels.map(l => l.name).join(', ')}</p>` : ''}
-              ${data.uri ? `<p style="margin-top: 8px;"><a href="${data.uri}" target="_blank" style="color: #1DB954;">在 Discogs 查看</a></p>` : ''}
+              ${data.uri ? `<p style="margin-top: 8px;"><a href="${data.uri}" target="_blank" style="color: #1DB954;">在 Discogs 查看 →</a></p>` : ''}
             </div>
             <div class="tracklist tab-content" id="tab-ai">
-              <h3>🤖 AI 搜索</h3>
-              <p style="color: #B3B3B3;">AI 搜索功能开发中，请稍后再试</p>
+              <div id="tavily-loading" style="text-align: center; padding: 20px;">
+                <p style="color: #B3B3B3;">正在搜索 AI 结果...</p>
+              </div>
+              <div id="tavily-results"></div>
             </div>
           </div>
         `;
 
         showPage('detail');
         addToHistory(data);
+        
+        setTimeout(async () => {
+          await loadTavilyResults(data.title, artistName);
+        }, 500);
       } catch (err) {
         console.error('Album detail error:', err);
         const errorMsg = err.message || '未知错误';
@@ -586,11 +789,85 @@
       }
     }
 
+    // 显示 Tavily 搜索结果
+    async function loadTavilyResults(albumTitle, artistName) {
+      const tavilyKey = localStorage.getItem('vinylscan_tavily_key');
+      const zhipuKey = localStorage.getItem(STORAGE_KEYS.ZHIPU_KEY);
+      
+      const loadingEl = document.getElementById('tavily-loading');
+      const resultsEl = document.getElementById('tavily-results');
+      
+      if (!tavilyKey) {
+        if (loadingEl) loadingEl.innerHTML = '<p style="color: #ff4444;">⚠️ 请在设置中配置 Tavily API Key</p>';
+        return;
+      }
+      
+      try {
+        const result = await searchWithTavily(albumTitle, artistName, tavilyKey);
+        
+        if (loadingEl) loadingEl.style.display = 'none';
+        
+        if (!result.success) {
+          if (resultsEl) {
+            resultsEl.innerHTML = `
+              <div style="text-align: center; padding: 20px;">
+                <p style="color: #ff4444;">❌ ${result.error}</p>
+                <p style="color: #666; margin-top: 8px; font-size: 12px;">请检查 Tavily API Key 是否正确</p>
+              </div>
+            `;
+          }
+          return;
+        }
+        
+        if (result.results.length === 0) {
+          if (resultsEl) {
+            resultsEl.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">暂无搜索结果</p>';
+          }
+          return;
+        }
+        
+        const translatedResults = await Promise.all(
+          result.results.map(async (item) => {
+            try {
+              const translated = await translateToChinese(item.snippet || '', zhipuKey);
+              return { ...item, translatedSnippet: translated };
+            } catch (e) {
+              return { ...item, translatedSnippet: item.snippet };
+            }
+          })
+        );
+        
+        if (resultsEl) {
+          resultsEl.innerHTML = `
+            <h4 style="margin-bottom: 16px;">🔍 搜索结果</h4>
+            ${translatedResults.map((item, i) => `
+              <div style="margin-bottom: 16px; padding: 12px; background: #282828; border-radius: 8px;">
+                <h5 style="margin-bottom: 8px; color: #1DB954;">
+                  <a href="${item.url}" target="_blank" style="color: inherit; text-decoration: none;">
+                    ${i + 1}. ${item.title || 'Untitled'}
+                  </a>
+                </h5>
+                <p style="color: #B3B3B3; font-size: 14px; line-height: 1.6;">
+                  ${item.translatedSnippet || item.snippet || '暂无摘要'}
+                </p>
+                <p style="color: #666; font-size: 12px; margin-top: 8px;">
+                  来源: ${new URL(item.url).hostname}
+                </p>
+              </div>
+            `).join('')}
+          `;
+        }
+      } catch (e) {
+        console.error('Load Tavily results error:', e);
+        if (loadingEl) loadingEl.innerHTML = '<p style="color: #ff4444;">❌ 加载失败，请稍后重试</p>';
+      }
+    }
+
     function showTab(tab) {
       document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
       document.querySelector(`.tab:nth-child(${tab === 'tracks' ? 1 : tab === 'info' ? 2 : 3})`).classList.add('active');
-      document.getElementById(`tab-${tab}`).classList.add('active');
+      document.getElementById(`tab-${tab}`)?.classList.add('active');
     }
 
     function getFavorites() {
@@ -710,9 +987,11 @@
     function saveSettings() {
       const discogsToken = document.getElementById('discogs-token').value.trim();
       const zhipuKey = document.getElementById('zhipu-key').value.trim();
+      const tavilyKey = document.getElementById('tavily-key').value.trim();
       
       localStorage.setItem(STORAGE_KEYS.DISCOGS_TOKEN, discogsToken);
       localStorage.setItem(STORAGE_KEYS.ZHIPU_KEY, zhipuKey);
+      localStorage.setItem('vinylscan_tavily_key', tavilyKey);
       showToast('设置已保存', 'success');
     }
 
@@ -720,8 +999,10 @@
       if (!confirm('确定要重置所有设置吗？')) return;
       localStorage.removeItem(STORAGE_KEYS.DISCOGS_TOKEN);
       localStorage.removeItem(STORAGE_KEYS.ZHIPU_KEY);
+      localStorage.removeItem('vinylscan_tavily_key');
       document.getElementById('discogs-token').value = '';
       document.getElementById('zhipu-key').value = '';
+      document.getElementById('tavily-key').value = '';
       showToast('设置已重置');
     }
 
@@ -841,8 +1122,10 @@
     document.addEventListener('DOMContentLoaded', () => {
       const token = localStorage.getItem(STORAGE_KEYS.DISCOGS_TOKEN);
       const zhipuKey = localStorage.getItem(STORAGE_KEYS.ZHIPU_KEY);
+      const tavilyKey = localStorage.getItem('vinylscan_tavily_key');
       if (token) document.getElementById('discogs-token').value = token;
       if (zhipuKey) document.getElementById('zhipu-key').value = zhipuKey;
+      if (tavilyKey) document.getElementById('tavily-key').value = tavilyKey;
     });
   </script>
 </body>
